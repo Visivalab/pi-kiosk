@@ -2,7 +2,14 @@
 
 Interactive first-boot wizard for Raspberry Pi OS (Bookworm / Trixie, labwc).
 
-Copy this folder to a Pi, or clone it there. Then:
+The repo must be **public**. Then, on the Pi:
+
+    curl -fsSL https://raw.githubusercontent.com/Visivalab/pi-kiosk/master/kiosk.sh | sudo bash
+
+That downloads only `kiosk.sh`. The script then fetches the rest of the tree
+and reattaches the keyboard so the rotation prompt still works.
+
+Or copy this folder to a Pi / clone it there, then:
 
     sudo ./kiosk.sh
 

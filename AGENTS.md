@@ -5,7 +5,7 @@ Guidance for coding agents working in this repository.
 ## Scope and working copy
 
 - Canonical checkout: `/home/gerard/projects/pi-kiosk-setup`
-- Not a GitHub repo yet. Do not invent a remote or push unless asked.
+- Public GitHub remote: `https://github.com/Visivalab/pi-kiosk` (must be public for the curl one-liner). Do not push unless asked.
 - This tool is meant to run on **other** Raspberry Pis, never on the VPS that hosts this checkout.
 - Do not run `sudo ./kiosk.sh` or `python3 -m pi_kiosk` against a real host unless the user explicitly wants a live Pi configured. Tests use an in-memory fake.
 
@@ -26,7 +26,7 @@ Not in v1: Chromium kiosk, touch remap, RustDesk. Those are extra steps, not a r
 ## Repository map
 
 ```text
-kiosk.sh                      Pi entry point (re-execs with sudo)
+kiosk.sh                      Pi entry point (sudo; pipeable from GitHub)
 setup.sh                      thin wrapper around kiosk.sh
 src/pi_kiosk/app.py           wizard loop: ask → apply → report
 src/pi_kiosk/steps/           one module per concern
@@ -47,6 +47,7 @@ tests/                        unittest, FakeHost / FakeUI
 - Rotation names: `none` (0), `clockwise` (90), `counterclockwise` (270).
 - Stay on Wayland/labwc. Do not switch the Pi back to X11.
 - Do not commit, deploy, or configure a live Pi unless the user asks.
+- `kiosk.sh` may be piped (`curl … | sudo bash`). Keep the body in `main()` so the script is fully read before stdin is reattached to `/dev/tty`. If `src/pi_kiosk` is missing, it downloads the public GitHub archive.
 
 ## Safety
 
