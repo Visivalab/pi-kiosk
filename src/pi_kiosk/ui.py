@@ -1,0 +1,11 @@
+from typing import Protocol
+
+from pi_kiosk.choice import Choice
+
+
+class UI(Protocol):
+    def choose(self, prompt: str, options: list[Choice]) -> str: ...
+
+    def info(self, message: str) -> None: ...
+
+    def warn(self, message: str) -> None: ...

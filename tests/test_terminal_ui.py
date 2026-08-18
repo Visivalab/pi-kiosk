@@ -1,0 +1,48 @@
+import io
+import unittest
+
+from pi_kiosk.choice import Choice
+from pi_kiosk.terminal_ui import TerminalUI
+
+
+class TerminalUITests(unittest.TestCase):
+    def test_choose_prints_numbered_options_and_returns_id(self):
+        stdin = io.StringIO("2\n")
+        stdout = io.StringIO()
+        ui = TerminalUI(stdin=stdin, stdout=stdout)
+
+        picked = ui.choose(
+            "Screen rotation",
+            [
+                Choice("none", "No rotation"),
+                Choice("clockwise", "Rotate clockwise (90°)"),
+                Choice("counterclockwise", "Rotate counterclockwise (90°)"),
+            ],
+        )
+
+        self.assertEqual(picked, "clockwise")
+        text = stdout.getvalue()
+        self.assertIn("1) No rotation", text)
+        self.assertIn("2) Rotate clockwise (90°)", text)
+        self.assertIn("3) Rotate counterclockwise (90°)", text)
+
+    def test_choose_rejects_out_of_range_then_accepts(self):
+        stdin = io.StringIO("0\n9\nabc\n1\n")
+        stdout = io.StringIO()
+        ui = TerminalUI(stdin=stdin, stdout=stdout)
+
+        picked = ui.choose(
+            "Screen rotation",
+            [
+                Choice("none", "No rotation"),
+                Choice("clockwise", "Rotate clockwise (90°)"),
+            ],
+        )
+
+        self.assertEqual(picked, "none")
+        self.assertGreaterEqual(stdout.getvalue().lower().count("invalid"), 1)
+
+    def test_info_prints_the_completion_message(self):
+        stdout = io.StringIO()
+        TerminalUI(stdin=io.StringIO(), stdout=stdout).info("Done: example")
+        self.assertIn("Done: example", stdout.getvalue())

@@ -1,0 +1,29 @@
+from __future__ import annotations
+
+import sys
+from typing import TextIO
+
+from pi_kiosk.app import NeedRoot, NotARaspberryPi, Wizard
+from pi_kiosk.host import Host
+from pi_kiosk.linux import LinuxHost
+from pi_kiosk.terminal_ui import TerminalUI
+from pi_kiosk.ui import UI
+
+
+def main(
+    host: Host | None = None,
+    ui: UI | None = None,
+    stderr: TextIO | None = None,
+) -> int:
+    stderr = stderr if stderr is not None else sys.stderr
+    real_host = host if host is not None else LinuxHost()
+    real_ui = ui if ui is not None else TerminalUI()
+    try:
+        Wizard(real_host, real_ui).run()
+    except NotARaspberryPi as exc:
+        print(str(exc), file=stderr)
+        return 2
+    except NeedRoot as exc:
+        print(str(exc), file=stderr)
+        return 1
+    return 0

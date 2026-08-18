@@ -1,0 +1,74 @@
+import unittest
+
+from tests.fakes import FakeHost
+
+from pi_kiosk.steps.rotation import (
+    ROTATION_CHOICES,
+    RotationStep,
+    transform_for,
+)
+
+
+class TransformForRotationTests(unittest.TestCase):
+    def test_no_rotation_maps_to_0(self):
+        self.assertEqual(transform_for("none"), "0")
+
+    def test_clockwise_maps_to_90(self):
+        self.assertEqual(transform_for("clockwise"), "90")
+
+    def test_counterclockwise_maps_to_270(self):
+        self.assertEqual(transform_for("counterclockwise"), "270")
+
+    def test_unknown_choice_is_rejected(self):
+        with self.assertRaises(ValueError):
+            transform_for("upside-down")
+
+    def test_selector_offers_the_three_named_options(self):
+        ids = [choice.id for choice in ROTATION_CHOICES]
+        self.assertEqual(ids, ["none", "clockwise", "counterclockwise"])
+        labels = [choice.label for choice in ROTATION_CHOICES]
+        self.assertIn("No rotation", labels)
+        self.assertTrue(any("clockwise" in label.lower() for label in labels))
+        self.assertTrue(any("counterclockwise" in label.lower() for label in labels))
+
+
+class ApplyRotationTests(unittest.TestCase):
+    def test_writes_wlr_randr_block_for_clockwise(self):
+        host = FakeHost()
+        report = RotationStep().apply(host, "clockwise")
+
+        path = "/home/pi/.config/labwc/autostart"
+        content = host.files[path]
+        self.assertIn("wlr-randr --output HDMI-A-1 --transform 90", content)
+        self.assertIn("pi-kiosk-setup:rotation-begin", content)
+        self.assertIn("done", report.lower())
+        self.assertIn("clockwise", report.lower())
+
+    def test_replaces_previous_rotation_block_without_wiping_other_lines(self):
+        path = "/home/pi/.config/labwc/autostart"
+        existing = (
+            "kanshi &\n"
+            "# pi-kiosk-setup:rotation-begin\n"
+            "wlr-randr --output HDMI-A-1 --transform 90\n"
+            "# pi-kiosk-setup:rotation-end\n"
+            "some-other-app &\n"
+        )
+        host = FakeHost(files={path: existing}, wayland_output="DSI-1")
+        RotationStep().apply(host, "counterclockwise")
+
+        content = host.files[path]
+        self.assertIn("kanshi &", content)
+        self.assertIn("some-other-app &", content)
+        self.assertIn("wlr-randr --output DSI-1 --transform 270", content)
+        self.assertNotIn("--transform 90", content)
+        self.assertEqual(content.count("pi-kiosk-setup:rotation-begin"), 1)
+
+    def test_falls_back_to_hdmi_when_output_is_unknown(self):
+        host = FakeHost(wayland_output=None)
+        RotationStep().apply(host, "none")
+        content = host.files["/home/pi/.config/labwc/autostart"]
+        self.assertIn("wlr-randr --output HDMI-A-1 --transform 0", content)
+
+
+if __name__ == "__main__":
+    unittest.main()
