@@ -78,3 +78,17 @@ class CliTests(unittest.TestCase):
         )
         self.assertEqual(code, 1)
         self.assertIn("desktop user account", stderr.getvalue().lower())
+
+    def test_ctrl_c_exits_cleanly_without_traceback(self):
+        class InterruptingUI(FakeUI):
+            def choose(self, prompt, options):
+                raise KeyboardInterrupt()
+
+        stderr = io.StringIO()
+        code = main(
+            host=FakeHost(),
+            ui=InterruptingUI(),
+            stderr=stderr,
+        )
+        self.assertEqual(code, 130)
+        self.assertEqual(stderr.getvalue(), "")

@@ -21,6 +21,8 @@ def main(
     real_ui = ui if ui is not None else TerminalUI()
     try:
         Wizard(real_host, real_ui).run()
+    except KeyboardInterrupt:
+        return 130
     except NotARaspberryPi as exc:
         print(str(exc), file=stderr)
         return 2
