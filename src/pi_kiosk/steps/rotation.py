@@ -11,8 +11,8 @@ ROTATION_CHOICES = (
 
 _TRANSFORMS = {
     "none": "0",
-    "clockwise": "90",
-    "counterclockwise": "270",
+    "clockwise": "270",
+    "counterclockwise": "90",
 }
 
 _LABELS = {choice.id: choice.label for choice in ROTATION_CHOICES}

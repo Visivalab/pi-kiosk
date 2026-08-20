@@ -13,11 +13,11 @@ class TransformForRotationTests(unittest.TestCase):
     def test_no_rotation_maps_to_0(self):
         self.assertEqual(transform_for("none"), "0")
 
-    def test_clockwise_maps_to_90(self):
-        self.assertEqual(transform_for("clockwise"), "90")
+    def test_clockwise_maps_to_270(self):
+        self.assertEqual(transform_for("clockwise"), "270")
 
-    def test_counterclockwise_maps_to_270(self):
-        self.assertEqual(transform_for("counterclockwise"), "270")
+    def test_counterclockwise_maps_to_90(self):
+        self.assertEqual(transform_for("counterclockwise"), "90")
 
     def test_unknown_choice_is_rejected(self):
         with self.assertRaises(ValueError):
@@ -39,10 +39,10 @@ class ApplyRotationTests(unittest.TestCase):
 
         path = "/home/pi/.config/labwc/autostart"
         content = host.files[path]
-        self.assertIn("wlr-randr --output HDMI-A-1 --transform 90", content)
+        self.assertIn("wlr-randr --output HDMI-A-1 --transform 270", content)
         self.assertIn("pi-kiosk-setup:rotation-begin", content)
         self.assertIn(
-            ["wlr-randr", "--output", "HDMI-A-1", "--transform", "90"],
+            ["wlr-randr", "--output", "HDMI-A-1", "--transform", "270"],
             host.desktop_session_commands,
         )
         self.assertIn("done", report.lower())
@@ -64,8 +64,8 @@ class ApplyRotationTests(unittest.TestCase):
         content = host.files[path]
         self.assertIn("kanshi &", content)
         self.assertIn("some-other-app &", content)
-        self.assertIn("wlr-randr --output DSI-1 --transform 270", content)
-        self.assertNotIn("--transform 90", content)
+        self.assertIn("wlr-randr --output DSI-1 --transform 90", content)
+        self.assertNotIn("--transform 270", content)
         self.assertEqual(content.count("pi-kiosk-setup:rotation-begin"), 1)
 
     def test_falls_back_to_hdmi_when_output_is_unknown(self):

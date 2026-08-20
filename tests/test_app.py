@@ -30,7 +30,7 @@ class WizardTests(unittest.TestCase):
         self.assertIn("kiosk", reports[3].lower())
 
         autostart = host.files["/home/pi/.config/labwc/autostart"]
-        self.assertIn("--transform 90", autostart)
+        self.assertIn("--transform 270", autostart)
         self.assertIn("wlopm --on", autostart)
         self.assertIn("bash /home/pi/.config/pi-kiosk/webapp-kiosk.sh", autostart)
         self.assertIn(
