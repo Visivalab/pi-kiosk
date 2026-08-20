@@ -35,6 +35,7 @@ class Wizard:
             )
         if not self.host.is_root():
             raise NeedRoot("Run this tool with sudo. Nothing was changed.")
+        self.host.user()
 
         reports: list[str] = []
         for step in self.steps:

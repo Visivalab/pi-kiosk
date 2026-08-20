@@ -51,8 +51,17 @@ class RotationStep:
             command,
         )
         host.write_file(path, updated)
+        live_result = host.run_in_desktop_session(
+            ["wlr-randr", "--output", output, "--transform", transform],
+            check=False,
+        )
 
         label = _LABELS[choice_id]
+        if getattr(live_result, "returncode", 1) == 0:
+            return (
+                f"Done: screen rotation set to {label.lower()} "
+                f"({command}) and applied live. It will persist on future graphical logins."
+            )
         return (
             f"Done: screen rotation set to {label.lower()} "
             f"({command}). It applies on the next graphical login."

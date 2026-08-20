@@ -6,6 +6,8 @@ from tests.fakes import FakeHost
 
 from pi_kiosk.app import NeedRoot, Wizard
 from pi_kiosk.cli import main
+from pi_kiosk.linux import NeedSudoUser
+from pi_kiosk.terminal_ui import TerminalUI
 
 
 class RootGuardTests(unittest.TestCase):
@@ -47,3 +49,27 @@ class CliTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("sudo", stderr.getvalue().lower())
         self.assertEqual(host.commands, [])
+
+    def test_missing_terminal_input_exits_cleanly(self):
+        stderr = io.StringIO()
+        code = main(
+            host=FakeHost(),
+            ui=TerminalUI(stdin=io.StringIO(""), stdout=io.StringIO()),
+            stderr=stderr,
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("terminal", stderr.getvalue().lower())
+
+    def test_direct_root_shell_without_sudo_user_exits_cleanly(self):
+        class HostWithoutSudoUser(FakeHost):
+            def user(self) -> str:
+                raise NeedSudoUser("Run this tool with sudo from the desktop user account.")
+
+        stderr = io.StringIO()
+        code = main(
+            host=HostWithoutSudoUser(),
+            ui=FakeUI(answers={"Screen rotation": "none"}),
+            stderr=stderr,
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("desktop user account", stderr.getvalue().lower())

@@ -21,6 +21,7 @@ class FakeHost:
         wayland_output: str | None = "HDMI-A-1",
         raspberry_pi: bool = True,
         root: bool = True,
+        desktop_session_returncode: int = 0,
     ) -> None:
         self.home_dir = home
         self.username = user
@@ -28,7 +29,9 @@ class FakeHost:
         self.wayland_output = wayland_output
         self.raspberry_pi = raspberry_pi
         self.root = root
+        self.desktop_session_returncode = desktop_session_returncode
         self.commands: list[list[str]] = []
+        self.desktop_session_commands: list[list[str]] = []
         self.directories: set[str] = set()
 
     def home(self) -> str:
@@ -69,3 +72,7 @@ class FakeHost:
     def run(self, argv: list[str], check: bool = True) -> CommandResult:
         self.commands.append(list(argv))
         return CommandResult(argv=list(argv), returncode=0)
+
+    def run_in_desktop_session(self, argv: list[str], check: bool = True) -> CommandResult:
+        self.desktop_session_commands.append(list(argv))
+        return CommandResult(argv=list(argv), returncode=self.desktop_session_returncode)

@@ -41,8 +41,13 @@ class ApplyRotationTests(unittest.TestCase):
         content = host.files[path]
         self.assertIn("wlr-randr --output HDMI-A-1 --transform 90", content)
         self.assertIn("pi-kiosk-setup:rotation-begin", content)
+        self.assertIn(
+            ["wlr-randr", "--output", "HDMI-A-1", "--transform", "90"],
+            host.desktop_session_commands,
+        )
         self.assertIn("done", report.lower())
         self.assertIn("clockwise", report.lower())
+        self.assertIn("applied live", report.lower())
 
     def test_replaces_previous_rotation_block_without_wiping_other_lines(self):
         path = "/home/pi/.config/labwc/autostart"
@@ -68,6 +73,11 @@ class ApplyRotationTests(unittest.TestCase):
         RotationStep().apply(host, "none")
         content = host.files["/home/pi/.config/labwc/autostart"]
         self.assertIn("wlr-randr --output HDMI-A-1 --transform 0", content)
+
+    def test_reports_next_login_when_live_apply_is_not_available(self):
+        host = FakeHost(desktop_session_returncode=1)
+        report = RotationStep().apply(host, "clockwise")
+        self.assertIn("next graphical login", report.lower())
 
 
 if __name__ == "__main__":

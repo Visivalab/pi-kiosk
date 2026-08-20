@@ -93,22 +93,29 @@ attach_tty() {
     echo "WARN: no terminal detected; the rotation prompt may not work." >&2
     return 0
   fi
-  exec </dev/tty
+  return 10
 }
 
 run_wizard() {
-  local root="$1"
+  local root="$1" stdin_mode="${2:-inherit}"
   shift
+  shift || true
   export PYTHONPATH="$root/src"
   if [[ "${EUID}" -ne 0 ]]; then
-    sudo PYTHONPATH="$PYTHONPATH" python3 -m pi_kiosk "$@"
+    if [[ "$stdin_mode" == "tty" ]]; then
+      sudo PYTHONPATH="$PYTHONPATH" python3 -m pi_kiosk "$@" </dev/tty
+    else
+      sudo PYTHONPATH="$PYTHONPATH" python3 -m pi_kiosk "$@"
+    fi
+  elif [[ "$stdin_mode" == "tty" ]]; then
+    python3 -m pi_kiosk "$@" </dev/tty
   else
     python3 -m pi_kiosk "$@"
   fi
 }
 
 main() {
-  local root="" work="" status=0 here="" fetched=""
+  local root="" work="" status=0 here="" fetched="" stdin_mode="inherit"
 
   if here="$(script_dir)" && root="$(package_root "$here")"; then
     :
@@ -118,8 +125,16 @@ main() {
     root="${fetched#*$'\t'}"
   fi
 
-  attach_tty
-  run_wizard "$root" "$@" || status=$?
+  if attach_tty; then
+    :
+  else
+    status=$?
+    if [[ "$status" -eq 10 ]]; then
+      stdin_mode="tty"
+      status=0
+    fi
+  fi
+  run_wizard "$root" "$stdin_mode" "$@" || status=$?
   if [[ -n "$work" ]]; then
     rm -rf "$work"
   fi

@@ -7,7 +7,7 @@ The repo must be **public**. Then, on the Pi:
     curl -fsSL https://raw.githubusercontent.com/Visivalab/pi-kiosk/master/kiosk.sh | sudo bash
 
 That downloads only `kiosk.sh`. The script then fetches the rest of the tree
-and reattaches the keyboard so the rotation prompt still works.
+and gives the wizard access to `/dev/tty` so the rotation prompt still works.
 
 Or copy this folder to a Pi / clone it there, then:
 
@@ -15,6 +15,9 @@ Or copy this folder to a Pi / clone it there, then:
 
 It asks one question (screen rotation), then applies the rest and prints
 what it did after each step.
+
+If a Wayland desktop session is available, rotation is also applied live and
+saved for future graphical logins.
 
 This is not an image builder. Flash stock Raspberry Pi OS Desktop 64-bit
 with Imager, boot normally, run the command.

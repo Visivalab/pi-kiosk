@@ -210,7 +210,8 @@ class KioskShTests(unittest.TestCase):
     def test_script_body_is_wrapped_so_stdin_can_be_the_terminal(self):
         text = KIOSK_SH.read_text(encoding="utf-8")
         self.assertIn("main()", text)
-        self.assertRegex(text, r"exec\s+</dev/tty")
+        self.assertNotRegex(text, r"exec\s+</dev/tty")
+        self.assertRegex(text, r"</dev/tty")
         self.assertRegex(text.strip().splitlines()[-1], r'^main\s+"\$@"\s*$')
 
 
