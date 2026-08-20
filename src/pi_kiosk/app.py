@@ -2,6 +2,7 @@ from pi_kiosk.host import Host
 from pi_kiosk.steps.autologin import AutologinStep
 from pi_kiosk.steps.nosleep import NoSleepStep
 from pi_kiosk.steps.rotation import RotationStep
+from pi_kiosk.steps.webapp_kiosk import WebAppKioskStep
 from pi_kiosk.ui import UI
 
 
@@ -14,7 +15,7 @@ class NeedRoot(RuntimeError):
 
 
 def default_steps():
-    return (RotationStep(), NoSleepStep(), AutologinStep())
+    return (RotationStep(), NoSleepStep(), AutologinStep(), WebAppKioskStep())
 
 
 class Wizard:
@@ -25,7 +26,11 @@ class Wizard:
 
     @classmethod
     def question_step_ids(cls) -> list[str]:
-        return [step.id for step in default_steps() if step.choices]
+        return [
+            step.id
+            for step in default_steps()
+            if getattr(step, "interactive", bool(step.choices))
+        ]
 
     def run(self) -> list[str]:
         if not self.host.is_raspberry_pi():

@@ -1,4 +1,12 @@
+from dataclasses import dataclass
 from typing import Protocol
+
+
+@dataclass(frozen=True)
+class WebAppDeployment:
+    repo_ref: str
+    app_dir: str
+    artifact_dir: str
 
 
 class Host(Protocol):
@@ -25,3 +33,7 @@ class Host(Protocol):
     def run(self, argv: list[str], check: bool = True) -> object: ...
 
     def run_in_desktop_session(self, argv: list[str], check: bool = True) -> object: ...
+
+    def deploy_webapp(self, repo_ref: str, artifact_dirs: tuple[str, ...]) -> WebAppDeployment: ...
+
+    def chromium_command(self) -> str | None: ...

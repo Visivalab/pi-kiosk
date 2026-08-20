@@ -32,7 +32,12 @@ class CliTests(unittest.TestCase):
         host = FakeHost()
         code = main(
             host=host,
-            ui=FakeUI(answers={"Screen rotation": "none"}),
+            ui=FakeUI(
+                answers={
+                    "Screen rotation": "none",
+                    "GitHub repo": "Visivalab/demo-app",
+                }
+            ),
             stderr=io.StringIO(),
         )
         self.assertEqual(code, 0)

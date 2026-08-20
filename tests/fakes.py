@@ -1,6 +1,11 @@
 from dataclasses import dataclass, field
 
 
+from dataclasses import dataclass
+
+from pi_kiosk.host import WebAppDeployment
+
+
 @dataclass
 class CommandResult:
     argv: list[str]
@@ -22,6 +27,8 @@ class FakeHost:
         raspberry_pi: bool = True,
         root: bool = True,
         desktop_session_returncode: int = 0,
+        deployed_webapp: WebAppDeployment | None = None,
+        chromium: str | None = "chromium-browser",
     ) -> None:
         self.home_dir = home
         self.username = user
@@ -30,8 +37,15 @@ class FakeHost:
         self.raspberry_pi = raspberry_pi
         self.root = root
         self.desktop_session_returncode = desktop_session_returncode
+        self.deployed_webapp = deployed_webapp or WebAppDeployment(
+            repo_ref="Visivalab/demo-app",
+            app_dir=f"{home}/.local/share/pi-kiosk/webapp/current",
+            artifact_dir="build",
+        )
+        self.chromium = chromium
         self.commands: list[list[str]] = []
         self.desktop_session_commands: list[list[str]] = []
+        self.webapp_deploy_requests: list[tuple[str, tuple[str, ...]]] = []
         self.directories: set[str] = set()
 
     def home(self) -> str:
@@ -76,3 +90,10 @@ class FakeHost:
     def run_in_desktop_session(self, argv: list[str], check: bool = True) -> CommandResult:
         self.desktop_session_commands.append(list(argv))
         return CommandResult(argv=list(argv), returncode=self.desktop_session_returncode)
+
+    def deploy_webapp(self, repo_ref: str, artifact_dirs: tuple[str, ...]) -> WebAppDeployment:
+        self.webapp_deploy_requests.append((repo_ref, artifact_dirs))
+        return self.deployed_webapp
+
+    def chromium_command(self) -> str | None:
+        return self.chromium

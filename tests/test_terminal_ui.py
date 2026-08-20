@@ -46,3 +46,13 @@ class TerminalUITests(unittest.TestCase):
         stdout = io.StringIO()
         TerminalUI(stdin=io.StringIO(), stdout=stdout).info("Done: example")
         self.assertIn("Done: example", stdout.getvalue())
+
+    def test_prompt_reads_a_free_text_value(self):
+        stdin = io.StringIO("Visivalab/pi-kiosk-webapp\n")
+        stdout = io.StringIO()
+        ui = TerminalUI(stdin=stdin, stdout=stdout)
+
+        text = ui.prompt("GitHub repo")
+
+        self.assertEqual(text, "Visivalab/pi-kiosk-webapp")
+        self.assertIn("GitHub repo: ", stdout.getvalue())

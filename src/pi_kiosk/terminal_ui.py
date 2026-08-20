@@ -37,6 +37,14 @@ class TerminalUI:
             self.stdout.write("Invalid choice. Enter a number from the list.\n")
             self.stdout.flush()
 
+    def prompt(self, prompt: str) -> str:
+        self.stdout.write(f"{prompt}: ")
+        self.stdout.flush()
+        raw = self.stdin.readline()
+        if raw == "":
+            raise EOFError("no text input was provided")
+        return raw.strip()
+
     def info(self, message: str) -> None:
         self.stdout.write(f"{message}\n")
         self.stdout.flush()

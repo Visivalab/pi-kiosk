@@ -4,6 +4,7 @@ import sys
 from typing import TextIO
 
 from pi_kiosk.app import NeedRoot, NotARaspberryPi, Wizard
+from pi_kiosk.errors import UserFacingError
 from pi_kiosk.host import Host
 from pi_kiosk.linux import LinuxHost, NeedSudoUser
 from pi_kiosk.terminal_ui import TerminalUI
@@ -23,7 +24,7 @@ def main(
     except NotARaspberryPi as exc:
         print(str(exc), file=stderr)
         return 2
-    except (EOFError, NeedRoot, NeedSudoUser) as exc:
+    except (EOFError, NeedRoot, NeedSudoUser, UserFacingError) as exc:
         if isinstance(exc, EOFError):
             print(
                 "No terminal input was available for the rotation prompt. "
