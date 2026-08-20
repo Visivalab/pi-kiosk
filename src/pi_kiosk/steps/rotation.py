@@ -10,7 +10,7 @@ ROTATION_CHOICES = (
 )
 
 _TRANSFORMS = {
-    "none": "0",
+    "none": "normal",
     "clockwise": "270",
     "counterclockwise": "90",
 }

@@ -10,8 +10,8 @@ from pi_kiosk.steps.rotation import (
 
 
 class TransformForRotationTests(unittest.TestCase):
-    def test_no_rotation_maps_to_0(self):
-        self.assertEqual(transform_for("none"), "0")
+    def test_no_rotation_maps_to_normal(self):
+        self.assertEqual(transform_for("none"), "normal")
 
     def test_clockwise_maps_to_270(self):
         self.assertEqual(transform_for("clockwise"), "270")
@@ -72,7 +72,7 @@ class ApplyRotationTests(unittest.TestCase):
         host = FakeHost(wayland_output=None)
         RotationStep().apply(host, "none")
         content = host.files["/home/pi/.config/labwc/autostart"]
-        self.assertIn("wlr-randr --output HDMI-A-1 --transform 0", content)
+        self.assertIn("wlr-randr --output HDMI-A-1 --transform normal", content)
 
     def test_reports_next_login_when_live_apply_is_not_available(self):
         host = FakeHost(desktop_session_returncode=1)
