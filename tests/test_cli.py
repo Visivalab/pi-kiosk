@@ -35,6 +35,7 @@ class CliTests(unittest.TestCase):
             ui=FakeUI(
                 answers={
                     "Screen rotation": "none",
+                    "RustDesk password": "secret-pass",
                     "GitHub repo": "Visivalab/demo-app",
                 }
             ),

@@ -16,6 +16,12 @@ class WebAppSource:
     subdir: str = ""
 
 
+@dataclass(frozen=True)
+class RustDeskInstall:
+    rustdesk_id: str
+    asset_name: str
+
+
 class Host(Protocol):
     """System port. Production talks to a Pi; tests use an in-memory fake."""
 
@@ -53,3 +59,9 @@ class Host(Protocol):
     def launch_kiosk_now(self, launcher: str) -> None: ...
 
     def touchscreen_present(self) -> bool: ...
+
+    def install_rustdesk(
+        self,
+        password: str,
+        progress: Callable[[str], None] | None = None,
+    ) -> RustDeskInstall: ...

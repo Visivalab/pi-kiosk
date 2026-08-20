@@ -15,7 +15,7 @@ from urllib import error, request
 
 from pi_kiosk.detect import looks_like_raspberry_pi
 from pi_kiosk.errors import UserFacingError
-from pi_kiosk.host import WebAppDeployment, WebAppSource
+from pi_kiosk.host import RustDeskInstall, WebAppDeployment, WebAppSource
 
 
 class NeedSudoUser(RuntimeError):
@@ -193,6 +193,40 @@ class LinuxHost:
             return False
         return _libinput_reports_touch(result.stdout)
 
+    def install_rustdesk(
+        self,
+        password: str,
+        progress: Callable[[str], None] | None = None,
+    ) -> RustDeskInstall:
+        self._report_progress(progress, "Resolving latest RustDesk release")
+        release = self._read_json("https://api.github.com/repos/rustdesk/rustdesk/releases/latest")
+        asset = _select_rustdesk_deb_asset(release, self._debian_architecture())
+
+        with tempfile.TemporaryDirectory() as tmp:
+            temp_root = Path(tmp)
+            package_path = temp_root / asset["name"]
+
+            self._report_progress(progress, "Downloading RustDesk package")
+            self._download_file(str(asset["browser_download_url"]), package_path)
+
+            self._report_progress(progress, "Installing RustDesk package")
+            subprocess.run(
+                ["apt-get", "install", "-fy", str(package_path)],
+                check=True,
+                text=True,
+            )
+
+        self._report_progress(progress, "Configuring RustDesk access")
+        self._restart_rustdesk_service()
+        rustdesk_id = self._rustdesk_get_id()
+        subprocess.run(["rustdesk", "--password", password], check=True, text=True)
+        self._restart_rustdesk_service()
+
+        return RustDeskInstall(
+            rustdesk_id=rustdesk_id,
+            asset_name=str(asset["name"]),
+        )
+
     def _own(self, path: Path) -> None:
         if not self.is_root():
             return
@@ -339,6 +373,34 @@ class LinuxHost:
         if progress is not None:
             progress(message)
 
+    def _debian_architecture(self) -> str:
+        result = subprocess.run(
+            ["dpkg", "--print-architecture"],
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        return result.stdout.strip()
+
+    def _restart_rustdesk_service(self) -> None:
+        subprocess.run(
+            ["systemctl", "restart", "rustdesk"],
+            check=False,
+            text=True,
+        )
+
+    def _rustdesk_get_id(self) -> str:
+        result = subprocess.run(
+            ["rustdesk", "--get-id"],
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        rustdesk_id = result.stdout.strip()
+        if not rustdesk_id:
+            raise UserFacingError("RustDesk did not return an ID after installation.")
+        return rustdesk_id
+
 
 def _read_device_tree_model() -> str | None:
     for candidate in (
@@ -358,3 +420,32 @@ def _libinput_reports_touch(stdout: str) -> bool:
         if line.lstrip().startswith("Capabilities:") and "touch" in line.lower():
             return True
     return False
+
+
+def _select_rustdesk_deb_asset(release: dict[str, object], arch: str) -> dict[str, str]:
+    assets = release.get("assets")
+    if not isinstance(assets, list):
+        raise UserFacingError("RustDesk release metadata did not include assets.")
+
+    suffixes = _rustdesk_asset_suffixes(arch)
+    for suffix in suffixes:
+        for asset in assets:
+            if not isinstance(asset, dict):
+                continue
+            name = asset.get("name")
+            url = asset.get("browser_download_url")
+            if isinstance(name, str) and isinstance(url, str) and name.endswith(suffix):
+                return {"name": name, "browser_download_url": url}
+
+    raise UserFacingError(
+        f"No supported RustDesk .deb package was found for architecture {arch}."
+    )
+
+
+def _rustdesk_asset_suffixes(arch: str) -> tuple[str, ...]:
+    mapping = {
+        "arm64": ("aarch64.deb",),
+        "armhf": ("armv7-sciter.deb", "armv7.deb"),
+        "amd64": ("x86_64.deb", "amd64.deb"),
+    }
+    return mapping.get(arch, ())

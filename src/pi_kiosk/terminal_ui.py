@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import getpass
 import sys
 from typing import TextIO
 
@@ -43,6 +44,16 @@ class TerminalUI:
         raw = self.stdin.readline()
         if raw == "":
             raise EOFError("no text input was provided")
+        return raw.strip()
+
+    def secret(self, prompt: str) -> str:
+        if self.stdin is sys.stdin:
+            return getpass.getpass(f"{prompt}: ", stream=self.stdout)
+        self.stdout.write(f"{prompt}: ")
+        self.stdout.flush()
+        raw = self.stdin.readline()
+        if raw == "":
+            raise EOFError("no secret input was provided")
         return raw.strip()
 
     def confirm(self, prompt: str, default: bool = True) -> bool:

@@ -29,7 +29,7 @@ def main(
     except (EOFError, NeedRoot, NeedSudoUser, UserFacingError) as exc:
         if isinstance(exc, EOFError):
             print(
-                "No terminal input was available for the rotation prompt. "
+                "No terminal input was available for the wizard prompts. "
                 "Run this tool from a real terminal. Nothing was changed.",
                 file=stderr,
             )

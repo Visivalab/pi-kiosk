@@ -3,7 +3,13 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from pi_kiosk.linux import LinuxHost, NeedSudoUser, _libinput_reports_touch
+from pi_kiosk.errors import UserFacingError
+from pi_kiosk.linux import (
+    LinuxHost,
+    NeedSudoUser,
+    _libinput_reports_touch,
+    _select_rustdesk_deb_asset,
+)
 
 
 class LinuxHostTests(unittest.TestCase):
@@ -47,6 +53,22 @@ class LinuxHostTests(unittest.TestCase):
                 "Device: Foo\nCapabilities: keyboard pointer\n"
             )
         )
+
+    def test_selects_arm64_rustdesk_deb_asset(self):
+        asset = _select_rustdesk_deb_asset(
+            {
+                "assets": [
+                    {"name": "rustdesk-1.4.3-x86_64.deb", "browser_download_url": "x"},
+                    {"name": "rustdesk-1.4.3-aarch64.deb", "browser_download_url": "a"},
+                ]
+            },
+            "arm64",
+        )
+        self.assertEqual(asset["name"], "rustdesk-1.4.3-aarch64.deb")
+
+    def test_rejects_unsupported_rustdesk_architecture(self):
+        with self.assertRaises(UserFacingError):
+            _select_rustdesk_deb_asset({"assets": []}, "mips")
 
 
 if __name__ == "__main__":

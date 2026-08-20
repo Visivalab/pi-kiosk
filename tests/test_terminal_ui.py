@@ -57,6 +57,16 @@ class TerminalUITests(unittest.TestCase):
         self.assertEqual(text, "Visivalab/pi-kiosk-webapp")
         self.assertIn("GitHub repo: ", stdout.getvalue())
 
+    def test_secret_reads_a_value(self):
+        stdin = io.StringIO("secret-pass\n")
+        stdout = io.StringIO()
+        ui = TerminalUI(stdin=stdin, stdout=stdout)
+
+        text = ui.secret("RustDesk password")
+
+        self.assertEqual(text, "secret-pass")
+        self.assertIn("RustDesk password: ", stdout.getvalue())
+
     def test_progress_prints_a_loading_line(self):
         stdout = io.StringIO()
         TerminalUI(stdin=io.StringIO(), stdout=stdout).progress("Downloading webapp archive")

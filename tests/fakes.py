@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Callable
 
-from pi_kiosk.host import WebAppDeployment, WebAppSource
+from pi_kiosk.host import RustDeskInstall, WebAppDeployment, WebAppSource
 
 
 @dataclass
@@ -28,6 +28,7 @@ class FakeHost:
         deployed_webapp: WebAppDeployment | None = None,
         chromium: str | None = "chromium-browser",
         touchscreen: bool = False,
+        rustdesk_install: RustDeskInstall | None = None,
     ) -> None:
         self.home_dir = home
         self.username = user
@@ -43,11 +44,17 @@ class FakeHost:
         )
         self.chromium = chromium
         self.touchscreen = touchscreen
+        self.rustdesk_install = rustdesk_install or RustDeskInstall(
+            rustdesk_id="123 456 789",
+            asset_name="rustdesk-1.4.3-aarch64.deb",
+        )
         self.commands: list[list[str]] = []
         self.desktop_session_commands: list[list[str]] = []
         self.webapp_deploy_requests: list[tuple[WebAppSource, tuple[str, ...]]] = []
         self.webapp_progress_messages: list[str] = []
         self.launched_kiosk_paths: list[str] = []
+        self.rustdesk_progress_messages: list[str] = []
+        self.rustdesk_passwords: list[str] = []
         self.directories: set[str] = set()
 
     def home(self) -> str:
@@ -119,3 +126,20 @@ class FakeHost:
 
     def touchscreen_present(self) -> bool:
         return self.touchscreen
+
+    def install_rustdesk(
+        self,
+        password: str,
+        progress: Callable[[str], None] | None = None,
+    ) -> RustDeskInstall:
+        self.rustdesk_passwords.append(password)
+        if progress is not None:
+            for message in (
+                "Resolving latest RustDesk release",
+                "Downloading RustDesk package",
+                "Installing RustDesk package",
+                "Configuring RustDesk access",
+            ):
+                progress(message)
+                self.rustdesk_progress_messages.append(message)
+        return self.rustdesk_install

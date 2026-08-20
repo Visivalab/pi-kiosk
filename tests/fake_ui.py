@@ -32,6 +32,12 @@ class FakeUI:
             return False
         raise AssertionError(f"invalid programmed answer for prompt: {prompt!r}")
 
+    def secret(self, prompt: str) -> str:
+        self.prompts.append(prompt)
+        if prompt in self.answers:
+            return self.answers[prompt]
+        raise AssertionError(f"no programmed answer for prompt: {prompt!r}")
+
     def info(self, message: str) -> None:
         self.messages.append(message)
 
