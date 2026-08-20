@@ -22,7 +22,7 @@ class WizardTests(unittest.TestCase):
         reports = Wizard(host, ui).run()
 
         self.assertEqual(ui.prompts, ["Screen rotation", "GitHub repo", "Open the app now?"])
-        self.assertEqual(len(reports), 4)
+        self.assertEqual(len(reports), 5)
         self.assertTrue(all(item.lower().startswith("done:") for item in reports))
         self.assertEqual(
             [message for message in ui.messages if message.lower().startswith("done:")],
@@ -30,9 +30,10 @@ class WizardTests(unittest.TestCase):
         )
         self.assertTrue(any(message.startswith("[....] ") for message in ui.messages))
         self.assertIn("clockwise", reports[0].lower())
-        self.assertTrue("sleep" in reports[1].lower() or "blank" in reports[1].lower())
-        self.assertIn("autologin", reports[2].lower())
-        self.assertIn("kiosk", reports[3].lower())
+        self.assertIn("no touch screen", reports[1].lower())
+        self.assertTrue("sleep" in reports[2].lower() or "blank" in reports[2].lower())
+        self.assertIn("autologin", reports[3].lower())
+        self.assertIn("kiosk", reports[4].lower())
 
         autostart = host.files["/home/pi/.config/labwc/autostart"]
         self.assertIn("--transform 270", autostart)

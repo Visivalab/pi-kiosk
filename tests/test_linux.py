@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from pi_kiosk.linux import LinuxHost, NeedSudoUser
+from pi_kiosk.linux import LinuxHost, NeedSudoUser, _libinput_reports_touch
 
 
 class LinuxHostTests(unittest.TestCase):
@@ -33,6 +33,20 @@ class LinuxHostTests(unittest.TestCase):
                     home,
                 ],
             )
+
+    def test_libinput_touch_detection_reports_true_for_touch_capability(self):
+        self.assertTrue(
+            _libinput_reports_touch(
+                "Device: Foo\nCapabilities: keyboard pointer touch\n"
+            )
+        )
+
+    def test_libinput_touch_detection_reports_false_without_touch_capability(self):
+        self.assertFalse(
+            _libinput_reports_touch(
+                "Device: Foo\nCapabilities: keyboard pointer\n"
+            )
+        )
 
 
 if __name__ == "__main__":

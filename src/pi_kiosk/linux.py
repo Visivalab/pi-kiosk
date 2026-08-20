@@ -181,6 +181,18 @@ class LinuxHost:
         ]
         self.run_in_desktop_session(command, check=True)
 
+    def touchscreen_present(self) -> bool:
+        try:
+            result = subprocess.run(
+                ["libinput", "list-devices"],
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+        except FileNotFoundError:
+            return False
+        return _libinput_reports_touch(result.stdout)
+
     def _own(self, path: Path) -> None:
         if not self.is_root():
             return
@@ -339,3 +351,10 @@ def _read_device_tree_model() -> str | None:
             continue
         return raw.split(b"\0", 1)[0].decode("utf-8", errors="replace")
     return None
+
+
+def _libinput_reports_touch(stdout: str) -> bool:
+    for line in stdout.splitlines():
+        if line.lstrip().startswith("Capabilities:") and "touch" in line.lower():
+            return True
+    return False

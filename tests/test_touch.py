@@ -1,0 +1,78 @@
+import unittest
+
+from tests.fakes import FakeHost
+
+from pi_kiosk.steps.rotation import RotationStep
+from pi_kiosk.steps.touch import BEGIN, TouchStep, upsert_touch_block
+
+
+class TouchStepTests(unittest.TestCase):
+    def test_reports_when_no_touchscreen_is_detected(self):
+        host = FakeHost()
+
+        report = TouchStep().apply(host)
+
+        self.assertIn("no touch screen", report.lower())
+        self.assertNotIn("/home/pi/.config/labwc/rc.xml", host.files)
+
+    def test_reports_no_mapping_needed_when_screen_is_not_rotated(self):
+        host = FakeHost(touchscreen=True)
+        RotationStep().apply(host, "none")
+
+        report = TouchStep().apply(host)
+
+        self.assertIn("no mapping needed", report.lower())
+        self.assertNotIn("/home/pi/.config/labwc/rc.xml", host.files)
+
+    def test_writes_touch_mapping_when_screen_is_rotated(self):
+        host = FakeHost(touchscreen=True)
+        RotationStep().apply(host, "clockwise")
+
+        report = TouchStep().apply(host)
+
+        content = host.files["/home/pi/.config/labwc/rc.xml"]
+        self.assertIn(BEGIN, content)
+        self.assertIn('<touch mapToOutput="HDMI-A-1" />', content)
+        self.assertIn("<calibrationMatrix>0 1 0 -1 0 1</calibrationMatrix>", content)
+        self.assertIn("clockwise", report.lower())
+
+    def test_replaces_previous_touch_block_without_duplication(self):
+        host = FakeHost(
+            touchscreen=True,
+            files={
+                "/home/pi/.config/labwc/rc.xml": (
+                    '<?xml version="1.0"?>\n'
+                    "<labwc_config>\n"
+                    "  <keyboard />\n"
+                    f"{BEGIN}\n"
+                    '  <touch mapToOutput="HDMI-A-1" />\n'
+                    "  <libinput>\n"
+                    '    <device category="touch">\n'
+                    "      <calibrationMatrix>old</calibrationMatrix>\n"
+                    "    </device>\n"
+                    "  </libinput>\n"
+                    "<!-- pi-kiosk-setup:touch-end -->\n"
+                    "</labwc_config>\n"
+                )
+            },
+        )
+        RotationStep().apply(host, "counterclockwise")
+
+        TouchStep().apply(host)
+
+        content = host.files["/home/pi/.config/labwc/rc.xml"]
+        self.assertIn("  <keyboard />", content)
+        self.assertEqual(content.count(BEGIN), 1)
+        self.assertIn("<calibrationMatrix>0 -1 1 1 0 0</calibrationMatrix>", content)
+
+
+class UpsertTouchBlockTests(unittest.TestCase):
+    def test_creates_minimal_rc_xml_when_missing(self):
+        content = upsert_touch_block("", output="DSI-1", matrix="0 -1 1 1 0 0")
+
+        self.assertIn("<labwc_config>", content)
+        self.assertIn('<touch mapToOutput="DSI-1" />', content)
+
+
+if __name__ == "__main__":
+    unittest.main()

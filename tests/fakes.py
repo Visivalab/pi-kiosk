@@ -27,6 +27,7 @@ class FakeHost:
         desktop_session_returncode: int = 0,
         deployed_webapp: WebAppDeployment | None = None,
         chromium: str | None = "chromium-browser",
+        touchscreen: bool = False,
     ) -> None:
         self.home_dir = home
         self.username = user
@@ -41,6 +42,7 @@ class FakeHost:
             artifact_dir="build",
         )
         self.chromium = chromium
+        self.touchscreen = touchscreen
         self.commands: list[list[str]] = []
         self.desktop_session_commands: list[list[str]] = []
         self.webapp_deploy_requests: list[tuple[WebAppSource, tuple[str, ...]]] = []
@@ -114,3 +116,6 @@ class FakeHost:
 
     def launch_kiosk_now(self, launcher: str) -> None:
         self.launched_kiosk_paths.append(launcher)
+
+    def touchscreen_present(self) -> bool:
+        return self.touchscreen
