@@ -13,7 +13,7 @@ from urllib import error, request
 
 from pi_kiosk.detect import looks_like_raspberry_pi
 from pi_kiosk.errors import UserFacingError
-from pi_kiosk.host import WebAppDeployment
+from pi_kiosk.host import WebAppDeployment, WebAppSource
 
 
 class NeedSudoUser(RuntimeError):
@@ -121,7 +121,7 @@ class LinuxHost:
             env=merged_env,
         )
 
-    def deploy_webapp(self, repo_ref: str, artifact_dirs: tuple[str, ...]) -> WebAppDeployment:
+    def deploy_webapp(self, source: WebAppSource, artifact_dirs: tuple[str, ...]) -> WebAppDeployment:
         app_root = Path(self.home()) / ".local" / "share" / "pi-kiosk" / "webapp"
         current_dir = app_root / "current"
         app_root.mkdir(parents=True, exist_ok=True)
@@ -129,12 +129,14 @@ class LinuxHost:
 
         with tempfile.TemporaryDirectory() as tmp:
             temp_root = Path(tmp)
-            extracted_root = self._download_github_archive(repo_ref, temp_root)
-            artifact_path = self._find_artifact_dir(extracted_root, artifact_dirs)
+            extracted_root = self._download_github_archive(source.repo_ref, temp_root)
+            source_root = self._resolve_source_root(extracted_root, source)
+            artifact_path = self._find_artifact_dir(source_root, artifact_dirs)
             if artifact_path is None:
                 names = " or ".join(f"{name}/" for name in artifact_dirs)
                 raise UserFacingError(
-                    f"Repository {repo_ref} did not contain {names}. "
+                    f"Repository {source.repo_ref} did not contain {names} "
+                    f"in {source.subdir or 'the repo root'}. "
                     "Commit the built webapp and run the wizard again."
                 )
             stage_dir = app_root / "next"
@@ -148,7 +150,7 @@ class LinuxHost:
 
         self._own_tree(current_dir)
         return WebAppDeployment(
-            repo_ref=repo_ref,
+            repo_ref=source.repo_ref,
             app_dir=str(current_dir),
             artifact_dir=artifact_path.name,
         )
@@ -269,6 +271,21 @@ class LinuxHost:
             if candidate.is_dir():
                 return candidate
         return None
+
+    def _resolve_source_root(self, extracted_root: Path, source: WebAppSource) -> Path:
+        if not source.subdir:
+            return extracted_root
+
+        relative = Path(source.subdir)
+        if relative.is_absolute() or ".." in relative.parts:
+            raise UserFacingError("Webapp subdirectory must stay inside the repo.")
+
+        source_root = extracted_root / relative
+        if not source_root.is_dir():
+            raise UserFacingError(
+                f"Subdirectory {source.subdir} was not found in {source.repo_ref}."
+            )
+        return source_root
 
     def _copy_directory_contents(self, source: Path, target: Path) -> None:
         for child in source.iterdir():

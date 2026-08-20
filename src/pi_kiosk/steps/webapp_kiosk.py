@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import re
 import shlex
+from urllib.parse import urlparse
 
 from pi_kiosk.errors import UserFacingError
 from pi_kiosk.files import read_or_empty, upsert_marked_block
-from pi_kiosk.host import Host
+from pi_kiosk.host import Host, WebAppSource
 from pi_kiosk.ui import UI
 
 KIOSK_AUTOSTART_BEGIN = "# pi-kiosk-setup:webapp-kiosk-begin"
@@ -15,19 +16,40 @@ _REPO_PROMPT = "GitHub repo"
 _REPO_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
 
-def normalize_repo_ref(value: str) -> str:
+def normalize_source(value: str) -> WebAppSource:
     text = value.strip()
     if not text:
         raise ValueError("Enter a GitHub repo in owner/repo format.")
 
-    prefix = "https://github.com/"
-    if text.startswith(prefix):
-        text = text[len(prefix) :]
-    text = text.removesuffix(".git").strip("/")
+    if text.startswith("https://github.com/"):
+        return _normalize_github_url(text)
 
     if not _REPO_PATTERN.fullmatch(text):
         raise ValueError("Enter the repo as owner/repo or a full GitHub URL.")
-    return text
+    return WebAppSource(repo_ref=text)
+
+
+def _normalize_github_url(value: str) -> WebAppSource:
+    parsed = urlparse(value)
+    path = parsed.path.removesuffix(".git").strip("/")
+    parts = [part for part in path.split("/") if part]
+    if len(parts) < 2:
+        raise ValueError("Enter the repo as owner/repo or a full GitHub URL.")
+
+    repo_ref = "/".join(parts[:2])
+    if not _REPO_PATTERN.fullmatch(repo_ref):
+        raise ValueError("Enter the repo as owner/repo or a full GitHub URL.")
+
+    if len(parts) == 2:
+        return WebAppSource(repo_ref=repo_ref)
+
+    if len(parts) >= 4 and parts[2] == "tree":
+        subdir = "/".join(parts[4:]).strip("/")
+        if not subdir:
+            raise ValueError("GitHub tree URLs must include a subdirectory path.")
+        return WebAppSource(repo_ref=repo_ref, subdir=subdir)
+
+    raise ValueError("Enter the repo as owner/repo or a full GitHub URL.")
 
 
 def launcher_path(home: str) -> str:
@@ -72,16 +94,16 @@ class WebAppKioskStep:
     choices = ()
     interactive = True
 
-    def ask(self, ui: UI) -> str:
+    def ask(self, ui: UI) -> WebAppSource:
         while True:
             raw = ui.prompt(self.title)
             try:
-                return normalize_repo_ref(raw)
+                return normalize_source(raw)
             except ValueError as exc:
                 ui.warn(str(exc))
 
-    def apply(self, host: Host, repo_ref: str) -> str:
-        deployment = host.deploy_webapp(repo_ref, ("build", "dist"))
+    def apply(self, host: Host, source: WebAppSource) -> str:
+        deployment = host.deploy_webapp(source, ("build", "dist"))
         browser = host.chromium_command()
         if browser is None:
             raise UserFacingError(

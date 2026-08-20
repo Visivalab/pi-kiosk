@@ -3,11 +3,12 @@ import unittest
 from tests.fake_ui import FakeUI
 from tests.fakes import FakeHost
 
-from pi_kiosk.host import WebAppDeployment
+from pi_kiosk.host import WebAppDeployment, WebAppSource
 from pi_kiosk.steps.webapp_kiosk import (
     KIOSK_AUTOSTART_BEGIN,
     WebAppKioskStep,
     launcher_path,
+    normalize_source,
 )
 
 
@@ -17,14 +18,27 @@ class AskWebAppKioskStepTests(unittest.TestCase):
 
         answer = WebAppKioskStep().ask(ui)
 
-        self.assertEqual(answer, "Visivalab/demo-app")
+        self.assertEqual(answer, WebAppSource(repo_ref="Visivalab/demo-app"))
 
     def test_normalizes_full_github_url(self):
         ui = FakeUI(answers={"GitHub repo": "https://github.com/Visivalab/demo-app/"})
 
         answer = WebAppKioskStep().ask(ui)
 
-        self.assertEqual(answer, "Visivalab/demo-app")
+        self.assertEqual(answer, WebAppSource(repo_ref="Visivalab/demo-app"))
+
+    def test_normalizes_tree_url_with_subdirectory(self):
+        source = normalize_source(
+            "https://github.com/Visivalab/etruscos_touch/tree/main/screen_1_de"
+        )
+
+        self.assertEqual(
+            source,
+            WebAppSource(
+                repo_ref="Visivalab/etruscos_touch",
+                subdir="screen_1_de",
+            ),
+        )
 
     def test_retries_invalid_input_until_valid(self):
         class RetryUI(FakeUI):
@@ -40,7 +54,7 @@ class AskWebAppKioskStepTests(unittest.TestCase):
 
         answer = WebAppKioskStep().ask(ui)
 
-        self.assertEqual(answer, "Visivalab/demo-app")
+        self.assertEqual(answer, WebAppSource(repo_ref="Visivalab/demo-app"))
         self.assertTrue(any("owner/repo" in message for message in ui.messages))
 
 
@@ -54,11 +68,11 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
             )
         )
 
-        report = WebAppKioskStep().apply(host, "Visivalab/demo-app")
+        report = WebAppKioskStep().apply(host, WebAppSource(repo_ref="Visivalab/demo-app"))
 
         self.assertEqual(
             host.webapp_deploy_requests,
-            [("Visivalab/demo-app", ("build", "dist"))],
+            [(WebAppSource(repo_ref="Visivalab/demo-app"), ("build", "dist"))],
         )
         autostart = host.files["/home/pi/.config/labwc/autostart"]
         self.assertIn(KIOSK_AUTOSTART_BEGIN, autostart)
@@ -79,7 +93,7 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
             )
         )
 
-        report = WebAppKioskStep().apply(host, "Visivalab/demo-app")
+        report = WebAppKioskStep().apply(host, WebAppSource(repo_ref="Visivalab/demo-app"))
 
         self.assertIn("dist", report.lower())
 
@@ -96,7 +110,7 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
             }
         )
 
-        WebAppKioskStep().apply(host, "Visivalab/demo-app")
+        WebAppKioskStep().apply(host, WebAppSource(repo_ref="Visivalab/demo-app"))
 
         autostart = host.files[path]
         self.assertEqual(autostart.count(KIOSK_AUTOSTART_BEGIN), 1)
@@ -106,4 +120,34 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
         host = FakeHost(chromium=None)
 
         with self.assertRaises(RuntimeError):
-            WebAppKioskStep().apply(host, "Visivalab/demo-app")
+            WebAppKioskStep().apply(host, WebAppSource(repo_ref="Visivalab/demo-app"))
+
+    def test_passes_subdirectory_sources_to_host(self):
+        host = FakeHost(
+            deployed_webapp=WebAppDeployment(
+                repo_ref="Visivalab/etruscos_touch",
+                app_dir="/home/pi/.local/share/pi-kiosk/webapp/current",
+                artifact_dir="dist",
+            )
+        )
+
+        WebAppKioskStep().apply(
+            host,
+            WebAppSource(
+                repo_ref="Visivalab/etruscos_touch",
+                subdir="screen_1_de",
+            ),
+        )
+
+        self.assertEqual(
+            host.webapp_deploy_requests,
+            [
+                (
+                    WebAppSource(
+                        repo_ref="Visivalab/etruscos_touch",
+                        subdir="screen_1_de",
+                    ),
+                    ("build", "dist"),
+                )
+            ],
+        )

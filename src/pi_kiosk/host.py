@@ -9,6 +9,12 @@ class WebAppDeployment:
     artifact_dir: str
 
 
+@dataclass(frozen=True)
+class WebAppSource:
+    repo_ref: str
+    subdir: str = ""
+
+
 class Host(Protocol):
     """System port. Production talks to a Pi; tests use an in-memory fake."""
 
@@ -34,6 +40,6 @@ class Host(Protocol):
 
     def run_in_desktop_session(self, argv: list[str], check: bool = True) -> object: ...
 
-    def deploy_webapp(self, repo_ref: str, artifact_dirs: tuple[str, ...]) -> WebAppDeployment: ...
+    def deploy_webapp(self, source: WebAppSource, artifact_dirs: tuple[str, ...]) -> WebAppDeployment: ...
 
     def chromium_command(self) -> str | None: ...

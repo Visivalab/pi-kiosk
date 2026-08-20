@@ -1,9 +1,6 @@
-from dataclasses import dataclass, field
-
-
 from dataclasses import dataclass
 
-from pi_kiosk.host import WebAppDeployment
+from pi_kiosk.host import WebAppDeployment, WebAppSource
 
 
 @dataclass
@@ -45,7 +42,7 @@ class FakeHost:
         self.chromium = chromium
         self.commands: list[list[str]] = []
         self.desktop_session_commands: list[list[str]] = []
-        self.webapp_deploy_requests: list[tuple[str, tuple[str, ...]]] = []
+        self.webapp_deploy_requests: list[tuple[WebAppSource, tuple[str, ...]]] = []
         self.directories: set[str] = set()
 
     def home(self) -> str:
@@ -91,8 +88,12 @@ class FakeHost:
         self.desktop_session_commands.append(list(argv))
         return CommandResult(argv=list(argv), returncode=self.desktop_session_returncode)
 
-    def deploy_webapp(self, repo_ref: str, artifact_dirs: tuple[str, ...]) -> WebAppDeployment:
-        self.webapp_deploy_requests.append((repo_ref, artifact_dirs))
+    def deploy_webapp(
+        self,
+        source: WebAppSource,
+        artifact_dirs: tuple[str, ...],
+    ) -> WebAppDeployment:
+        self.webapp_deploy_requests.append((source, artifact_dirs))
         return self.deployed_webapp
 
     def chromium_command(self) -> str | None:

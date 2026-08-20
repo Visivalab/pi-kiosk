@@ -4,6 +4,7 @@ from tests.fake_ui import FakeUI
 from tests.fakes import FakeHost
 
 from pi_kiosk.app import NotARaspberryPi, Wizard
+from pi_kiosk.host import WebAppSource
 from pi_kiosk.steps.rotation import RotationStep
 from pi_kiosk.steps.webapp_kiosk import WebAppKioskStep
 
@@ -43,7 +44,7 @@ class WizardTests(unittest.TestCase):
         )
         self.assertEqual(
             host.webapp_deploy_requests,
-            [("Visivalab/demo-app", ("build", "dist"))],
+            [(WebAppSource(repo_ref="Visivalab/demo-app"), ("build", "dist"))],
         )
 
     def test_refuses_to_run_on_a_non_pi(self):
