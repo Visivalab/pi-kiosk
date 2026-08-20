@@ -59,6 +59,41 @@ class AskWebAppKioskStepTests(unittest.TestCase):
 
 
 class ApplyWebAppKioskStepTests(unittest.TestCase):
+    def test_opens_app_now_when_user_confirms(self):
+        host = FakeHost()
+        ui = FakeUI(
+            answers={
+                "GitHub repo": "Visivalab/demo-app",
+                "Open the app now?": "y",
+            }
+        )
+        step = WebAppKioskStep()
+        source = step.ask(ui)
+
+        report = step.apply(host, source)
+
+        self.assertEqual(
+            host.launched_kiosk_paths,
+            [launcher_path(host.home())],
+        )
+        self.assertIn("opened now", report.lower())
+
+    def test_does_not_open_app_now_when_user_declines(self):
+        host = FakeHost()
+        ui = FakeUI(
+            answers={
+                "GitHub repo": "Visivalab/demo-app",
+                "Open the app now?": "n",
+            }
+        )
+        step = WebAppKioskStep()
+        source = step.ask(ui)
+
+        report = step.apply(host, source)
+
+        self.assertEqual(host.launched_kiosk_paths, [])
+        self.assertNotIn("opened now", report.lower())
+
     def test_deploys_build_and_writes_one_autostart_block(self):
         host = FakeHost(
             deployed_webapp=WebAppDeployment(
@@ -67,8 +102,10 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
                 artifact_dir="build",
             )
         )
+        step = WebAppKioskStep()
+        step.ask(FakeUI(answers={"GitHub repo": "Visivalab/demo-app", "Open the app now?": "n"}))
 
-        report = WebAppKioskStep().apply(host, WebAppSource(repo_ref="Visivalab/demo-app"))
+        report = step.apply(host, WebAppSource(repo_ref="Visivalab/demo-app"))
 
         self.assertEqual(
             host.webapp_deploy_requests,
@@ -83,6 +120,15 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
         self.assertIn("http://127.0.0.1:8080", launcher)
         self.assertIn("/home/pi/.local/share/pi-kiosk/webapp/current", launcher)
         self.assertIn("build", report.lower())
+        self.assertEqual(
+            host.webapp_progress_messages,
+            [
+                "Resolving GitHub repo",
+                "Downloading webapp archive",
+                "Extracting webapp files",
+                "Deploying build output",
+            ],
+        )
 
     def test_falls_back_to_dist_when_host_deploys_that_artifact(self):
         host = FakeHost(

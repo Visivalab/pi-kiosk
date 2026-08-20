@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Callable
 from typing import Protocol
 
 
@@ -40,6 +41,13 @@ class Host(Protocol):
 
     def run_in_desktop_session(self, argv: list[str], check: bool = True) -> object: ...
 
-    def deploy_webapp(self, source: WebAppSource, artifact_dirs: tuple[str, ...]) -> WebAppDeployment: ...
+    def deploy_webapp(
+        self,
+        source: WebAppSource,
+        artifact_dirs: tuple[str, ...],
+        progress: Callable[[str], None] | None = None,
+    ) -> WebAppDeployment: ...
 
     def chromium_command(self) -> str | None: ...
+
+    def launch_kiosk_now(self, launcher: str) -> None: ...

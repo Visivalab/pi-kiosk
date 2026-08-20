@@ -56,3 +56,21 @@ class TerminalUITests(unittest.TestCase):
 
         self.assertEqual(text, "Visivalab/pi-kiosk-webapp")
         self.assertIn("GitHub repo: ", stdout.getvalue())
+
+    def test_progress_prints_a_loading_line(self):
+        stdout = io.StringIO()
+        TerminalUI(stdin=io.StringIO(), stdout=stdout).progress("Downloading webapp archive")
+        self.assertIn("[....] Downloading webapp archive", stdout.getvalue())
+
+    def test_confirm_accepts_default_yes_on_empty_input(self):
+        stdin = io.StringIO("\n")
+        stdout = io.StringIO()
+        accepted = TerminalUI(stdin=stdin, stdout=stdout).confirm("Open the app now?")
+        self.assertTrue(accepted)
+        self.assertIn("Open the app now? [Y/n]: ", stdout.getvalue())
+
+    def test_confirm_accepts_no(self):
+        stdin = io.StringIO("n\n")
+        stdout = io.StringIO()
+        accepted = TerminalUI(stdin=stdin, stdout=stdout).confirm("Open the app now?")
+        self.assertFalse(accepted)

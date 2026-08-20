@@ -4,11 +4,13 @@ import getpass
 import json
 import os
 import pwd
+import shlex
 import shutil
 import subprocess
 import tarfile
 import tempfile
 from pathlib import Path
+from typing import Callable
 from urllib import error, request
 
 from pi_kiosk.detect import looks_like_raspberry_pi
@@ -121,7 +123,13 @@ class LinuxHost:
             env=merged_env,
         )
 
-    def deploy_webapp(self, source: WebAppSource, artifact_dirs: tuple[str, ...]) -> WebAppDeployment:
+    def deploy_webapp(
+        self,
+        source: WebAppSource,
+        artifact_dirs: tuple[str, ...],
+        progress: Callable[[str], None] | None = None,
+    ) -> WebAppDeployment:
+        self._report_progress(progress, "Resolving GitHub repo")
         app_root = Path(self.home()) / ".local" / "share" / "pi-kiosk" / "webapp"
         current_dir = app_root / "current"
         app_root.mkdir(parents=True, exist_ok=True)
@@ -129,7 +137,9 @@ class LinuxHost:
 
         with tempfile.TemporaryDirectory() as tmp:
             temp_root = Path(tmp)
+            self._report_progress(progress, "Downloading webapp archive")
             extracted_root = self._download_github_archive(source.repo_ref, temp_root)
+            self._report_progress(progress, "Extracting webapp files")
             source_root = self._resolve_source_root(extracted_root, source)
             artifact_path = self._find_artifact_dir(source_root, artifact_dirs)
             if artifact_path is None:
@@ -143,6 +153,7 @@ class LinuxHost:
             if stage_dir.exists():
                 shutil.rmtree(stage_dir)
             stage_dir.mkdir(parents=True, exist_ok=True)
+            self._report_progress(progress, "Deploying build output")
             self._copy_directory_contents(artifact_path, stage_dir)
             if current_dir.exists():
                 shutil.rmtree(current_dir)
@@ -161,6 +172,14 @@ class LinuxHost:
             if found:
                 return found
         return None
+
+    def launch_kiosk_now(self, launcher: str) -> None:
+        command = [
+            "sh",
+            "-lc",
+            f"nohup bash {shlex.quote(launcher)} >/dev/null 2>&1 </dev/null &",
+        ]
+        self.run_in_desktop_session(command, check=True)
 
     def _own(self, path: Path) -> None:
         if not self.is_root():
@@ -299,6 +318,14 @@ class LinuxHost:
         self._own_within_home(root)
         for child in root.rglob("*"):
             self._own(child)
+
+    def _report_progress(
+        self,
+        progress: Callable[[str], None] | None,
+        message: str,
+    ) -> None:
+        if progress is not None:
+            progress(message)
 
 
 def _read_device_tree_model() -> str | None:

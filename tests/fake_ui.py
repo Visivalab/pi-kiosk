@@ -21,8 +21,22 @@ class FakeUI:
             return self.answers[prompt]
         raise AssertionError(f"no programmed answer for prompt: {prompt!r}")
 
+    def confirm(self, prompt: str, default: bool = True) -> bool:
+        self.prompts.append(prompt)
+        if prompt not in self.answers:
+            return default
+        answer = str(self.answers[prompt]).strip().lower()
+        if answer in ("", "y", "yes"):
+            return True
+        if answer in ("n", "no"):
+            return False
+        raise AssertionError(f"invalid programmed answer for prompt: {prompt!r}")
+
     def info(self, message: str) -> None:
         self.messages.append(message)
+
+    def progress(self, message: str) -> None:
+        self.messages.append(f"[....] {message}")
 
     def warn(self, message: str) -> None:
         self.messages.append(f"WARN: {message}")

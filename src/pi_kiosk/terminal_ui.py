@@ -45,6 +45,28 @@ class TerminalUI:
             raise EOFError("no text input was provided")
         return raw.strip()
 
+    def confirm(self, prompt: str, default: bool = True) -> bool:
+        suffix = "[Y/n]" if default else "[y/N]"
+        while True:
+            self.stdout.write(f"{prompt} {suffix}: ")
+            self.stdout.flush()
+            raw = self.stdin.readline()
+            if raw == "":
+                raise EOFError("no confirmation input was provided")
+            text = raw.strip().lower()
+            if text == "":
+                return default
+            if text in ("y", "yes"):
+                return True
+            if text in ("n", "no"):
+                return False
+            self.stdout.write("Invalid choice. Enter y or n.\n")
+            self.stdout.flush()
+
+    def progress(self, message: str) -> None:
+        self.stdout.write(f"[....] {message}\n")
+        self.stdout.flush()
+
     def info(self, message: str) -> None:
         self.stdout.write(f"{message}\n")
         self.stdout.flush()

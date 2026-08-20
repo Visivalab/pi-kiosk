@@ -21,10 +21,14 @@ class WizardTests(unittest.TestCase):
 
         reports = Wizard(host, ui).run()
 
-        self.assertEqual(ui.prompts, ["Screen rotation", "GitHub repo"])
+        self.assertEqual(ui.prompts, ["Screen rotation", "GitHub repo", "Open the app now?"])
         self.assertEqual(len(reports), 4)
         self.assertTrue(all(item.lower().startswith("done:") for item in reports))
-        self.assertEqual(ui.messages, reports)
+        self.assertEqual(
+            [message for message in ui.messages if message.lower().startswith("done:")],
+            reports,
+        )
+        self.assertTrue(any(message.startswith("[....] ") for message in ui.messages))
         self.assertIn("clockwise", reports[0].lower())
         self.assertTrue("sleep" in reports[1].lower() or "blank" in reports[1].lower())
         self.assertIn("autologin", reports[2].lower())
@@ -45,6 +49,10 @@ class WizardTests(unittest.TestCase):
         self.assertEqual(
             host.webapp_deploy_requests,
             [(WebAppSource(repo_ref="Visivalab/demo-app"), ("build", "dist"))],
+        )
+        self.assertEqual(
+            host.launched_kiosk_paths,
+            ["/home/pi/.config/pi-kiosk/webapp-kiosk.sh"],
         )
 
     def test_refuses_to_run_on_a_non_pi(self):

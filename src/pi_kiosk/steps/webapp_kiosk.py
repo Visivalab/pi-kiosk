@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import shlex
+from typing import Callable
 from urllib.parse import urlparse
 
 from pi_kiosk.errors import UserFacingError
@@ -94,7 +95,13 @@ class WebAppKioskStep:
     choices = ()
     interactive = True
 
+    def __init__(self) -> None:
+        self._progress = None
+        self._confirm: Callable[[str, bool], bool] | None = None
+
     def ask(self, ui: UI) -> WebAppSource:
+        self._progress = ui.progress
+        self._confirm = ui.confirm
         while True:
             raw = ui.prompt(self.title)
             try:
@@ -103,7 +110,8 @@ class WebAppKioskStep:
                 ui.warn(str(exc))
 
     def apply(self, host: Host, source: WebAppSource) -> str:
-        deployment = host.deploy_webapp(source, ("build", "dist"))
+        progress = self._progress or (lambda _message: None)
+        deployment = host.deploy_webapp(source, ("build", "dist"), progress=progress)
         browser = host.chromium_command()
         if browser is None:
             raise UserFacingError(
@@ -127,7 +135,15 @@ class WebAppKioskStep:
         )
         host.write_file(autostart_path, updated)
 
-        return (
+        opened_now = False
+        if self._confirm is not None and self._confirm("Open the app now?", True):
+            host.launch_kiosk_now(launcher_path(home))
+            opened_now = True
+
+        report = (
             f"Done: webapp kiosk deployed from {deployment.repo_ref} using "
             f"{deployment.artifact_dir}/. Chromium will start on the next graphical login."
         )
+        if opened_now:
+            report += " It was also opened now."
+        return report
