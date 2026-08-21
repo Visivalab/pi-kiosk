@@ -73,6 +73,21 @@ class UpsertTouchBlockTests(unittest.TestCase):
         self.assertIn("<labwc_config>", content)
         self.assertIn('<touch mapToOutput="DSI-1" />', content)
 
+    def test_converts_openbox_root_to_labwc_root(self):
+        content = upsert_touch_block(
+            (
+                '<?xml version="1.0"?>\n'
+                '<openbox_config xmlns="http://openbox.org/3.4/rc">\n'
+                "</openbox_config>\n"
+            ),
+            output="DSI-1",
+            matrix="0 -1 1 1 0 0",
+        )
+
+        self.assertIn("<labwc_config", content)
+        self.assertNotIn("<openbox_config", content)
+        self.assertIn('<touch mapToOutput="DSI-1" />', content)
+
 
 if __name__ == "__main__":
     unittest.main()

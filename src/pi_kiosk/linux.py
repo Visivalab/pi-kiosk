@@ -173,6 +173,19 @@ class LinuxHost:
                 return found
         return None
 
+    def wtype_command(self) -> str | None:
+        return shutil.which("wtype")
+
+    def swayidle_command(self) -> str | None:
+        return shutil.which("swayidle")
+
+    def ensure_packages_installed(self, packages: tuple[str, ...]) -> None:
+        subprocess.run(
+            ["apt-get", "install", "-y", *packages],
+            check=True,
+            text=True,
+        )
+
     def launch_kiosk_now(self, launcher: str) -> None:
         command = [
             "sh",

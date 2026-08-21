@@ -118,19 +118,21 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
             host.webapp_deploy_requests,
             [(WebAppSource(repo_ref="Visivalab/demo-app"), ("build", "dist"))],
         )
+        self.assertEqual(host.installed_packages, [])
         autostart = host.files["/home/pi/.config/labwc/autostart"]
         self.assertIn(KIOSK_AUTOSTART_BEGIN, autostart)
         self.assertIn(f"bash {launcher_path(host.home())}", autostart)
         rc_xml = host.files["/home/pi/.config/labwc/rc.xml"]
         self.assertIn(CURSOR_RC_BEGIN, rc_xml)
-        self.assertIn('<keybind key="W-F12">', rc_xml)
+        self.assertIn('<keybind key="A-W-h">', rc_xml)
         self.assertIn('<action name="HideCursor" />', rc_xml)
         launcher = host.files[launcher_path(host.home())]
         self.assertIn("python3 -m http.server 8080 --bind 127.0.0.1", launcher)
         self.assertIn('idle_pid=""', launcher)
-        self.assertIn("if command -v wtype >/dev/null 2>&1; then", launcher)
-        self.assertIn('(sleep 1; wtype -M logo -k F12 >/dev/null 2>&1 || true) &', launcher)
-        self.assertIn("swayidle timeout 5 'wtype -M logo -k F12 >/dev/null 2>&1 || true'", launcher)
+        self.assertIn("(sleep 1; /usr/bin/wtype -M alt -M logo -P h >/dev/null 2>&1 || true) &", launcher)
+        self.assertIn("if [ -x /usr/bin/wtype ]; then", launcher)
+        self.assertIn("if [ -x /usr/bin/wtype ] && [ -x /usr/bin/swayidle ]; then", launcher)
+        self.assertIn("swayidle timeout 5 '/usr/bin/wtype -M alt -M logo -P h >/dev/null 2>&1 || true'", launcher)
         self.assertIn('  if [ -n "$idle_pid" ]; then', launcher)
         self.assertIn('    kill "$idle_pid" >/dev/null 2>&1 || true', launcher)
         self.assertIn("chromium-browser", launcher)
@@ -204,7 +206,7 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
         self.assertEqual(rc_xml.count(CURSOR_RC_BEGIN), 1)
         self.assertIn("    <default />", rc_xml)
         self.assertIn(
-            '      <action name="WarpCursor" to="output" x="8" y="8" />',
+            '      <action name="WarpCursor" x="-1" y="-1" />',
             rc_xml,
         )
 
@@ -218,7 +220,7 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
                     "  <keyboard>\n"
                     "    <default />\n"
                     "    <!-- pi-kiosk-setup:cursor-hide-begin -->\n"
-                    '    <keybind key="W-F12">\n'
+                    '    <keybind key="A-W-h">\n'
                     '      <action name="HideCursor" />\n'
                     "    </keybind>\n"
                     "    <!-- pi-kiosk-setup:cursor-hide-end -->\n"
@@ -233,7 +235,7 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
         rc_xml = host.files[path]
         self.assertEqual(rc_xml.count(CURSOR_RC_BEGIN), 1)
         self.assertIn(
-            '      <action name="WarpCursor" to="output" x="8" y="8" />',
+            '      <action name="WarpCursor" x="-1" y="-1" />',
             rc_xml,
         )
 
@@ -242,6 +244,46 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
 
         with self.assertRaises(RuntimeError):
             WebAppKioskStep().apply(host, WebAppSource(repo_ref="Visivalab/demo-app"))
+
+    def test_rejects_missing_wtype(self):
+        host = FakeHost(wtype=None)
+
+        WebAppKioskStep().apply(host, WebAppSource(repo_ref="Visivalab/demo-app"))
+
+        self.assertEqual(host.installed_packages, [("wtype", "swayidle")])
+        launcher = host.files[launcher_path(host.home())]
+        self.assertIn("/usr/bin/wtype", launcher)
+
+    def test_rejects_missing_swayidle(self):
+        host = FakeHost(swayidle=None)
+
+        WebAppKioskStep().apply(host, WebAppSource(repo_ref="Visivalab/demo-app"))
+
+        self.assertEqual(host.installed_packages, [("wtype", "swayidle")])
+        launcher = host.files[launcher_path(host.home())]
+        self.assertIn("/usr/bin/swayidle", launcher)
+
+    def test_converts_openbox_root_to_labwc_root_before_writing_keybinds(self):
+        path = "/home/pi/.config/labwc/rc.xml"
+        host = FakeHost(
+            files={
+                path: (
+                    '<?xml version="1.0"?>\n'
+                    '<openbox_config xmlns="http://openbox.org/3.4/rc">\n'
+                    "  <keyboard>\n"
+                    "    <default />\n"
+                    "  </keyboard>\n"
+                    "</openbox_config>\n"
+                )
+            }
+        )
+
+        WebAppKioskStep().apply(host, WebAppSource(repo_ref="Visivalab/demo-app"))
+
+        rc_xml = host.files[path]
+        self.assertIn("<labwc_config", rc_xml)
+        self.assertNotIn("<openbox_config", rc_xml)
+        self.assertIn('<keybind key="A-W-h">', rc_xml)
 
     def test_passes_subdirectory_sources_to_host(self):
         host = FakeHost(

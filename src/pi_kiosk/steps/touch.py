@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pi_kiosk.files import read_or_empty
+from pi_kiosk.files import normalize_labwc_rc_xml, read_or_empty
 from pi_kiosk.host import Host
 from pi_kiosk.steps.rotation import BEGIN as ROTATION_BEGIN
 from pi_kiosk.steps.rotation import END as ROTATION_END
@@ -86,6 +86,7 @@ def touch_block(output: str, matrix: str) -> str:
 
 
 def upsert_touch_block(original: str, *, output: str, matrix: str) -> str:
+    original = normalize_labwc_rc_xml(original)
     block = f"{BEGIN}\n{touch_block(output, matrix)}\n{END}"
     if not original.strip():
         return f"{_RC_XML_HEADER}{block}\n{_RC_XML_FOOTER}"

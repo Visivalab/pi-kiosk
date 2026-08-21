@@ -70,6 +70,19 @@ class LinuxHostTests(unittest.TestCase):
         with self.assertRaises(UserFacingError):
             _select_rustdesk_deb_asset({"assets": []}, "mips")
 
+    def test_installs_missing_cursor_packages_with_apt(self):
+        host = LinuxHost()
+
+        with mock.patch("shutil.which", side_effect=["/usr/bin/wtype", "/usr/bin/swayidle"]):
+            with mock.patch("subprocess.run") as run:
+                host.ensure_packages_installed(("wtype", "swayidle"))
+
+        run.assert_called_once_with(
+            ["apt-get", "install", "-y", "wtype", "swayidle"],
+            check=True,
+            text=True,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

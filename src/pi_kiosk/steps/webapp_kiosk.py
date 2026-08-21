@@ -6,7 +6,7 @@ from typing import Callable
 from urllib.parse import urlparse
 
 from pi_kiosk.errors import UserFacingError
-from pi_kiosk.files import read_or_empty, upsert_marked_block
+from pi_kiosk.files import normalize_labwc_rc_xml, read_or_empty, upsert_marked_block
 from pi_kiosk.host import Host, WebAppSource
 from pi_kiosk.ui import UI
 
@@ -22,7 +22,8 @@ _RC_XML_HEADER = '<?xml version="1.0"?>\n<labwc_config>\n'
 _RC_XML_FOOTER = "</labwc_config>\n"
 _REPO_PROMPT = "GitHub repo"
 _REPO_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
-_HIDE_CURSOR_COMMAND = "wtype -M logo -k F12 >/dev/null 2>&1 || true"
+CURSOR_KEYBIND = "A-W-h"
+_HIDE_CURSOR_COMMAND = "-M alt -M logo -P h >/dev/null 2>&1 || true"
 
 
 def normalize_source(value: str) -> WebAppSource:
@@ -65,13 +66,15 @@ def launcher_path(home: str) -> str:
     return f"{home}/.config/pi-kiosk/webapp-kiosk.sh"
 
 
-def launcher_script(browser: str, app_dir: str) -> str:
+def launcher_script(browser: str, app_dir: str, wtype: str, swayidle: str) -> str:
     quoted_dir = shlex.quote(app_dir)
     quoted_browser = shlex.quote(browser)
+    quoted_wtype = shlex.quote(wtype)
+    quoted_swayidle = shlex.quote(swayidle)
     url = f"http://127.0.0.1:{KIOSK_PORT}"
     idle_command = (
-        f"swayidle timeout {CURSOR_IDLE_SECONDS} "
-        f"'{_HIDE_CURSOR_COMMAND}' >/dev/null 2>&1 &"
+        f"{quoted_swayidle} timeout {CURSOR_IDLE_SECONDS} "
+        f"'{quoted_wtype} {_HIDE_CURSOR_COMMAND}' >/dev/null 2>&1 &"
     )
     return "\n".join(
         [
@@ -99,10 +102,10 @@ def launcher_script(browser: str, app_dir: str) -> str:
             "  fi",
             "  sleep 0.2",
             "done",
-            "if command -v wtype >/dev/null 2>&1; then",
-            f"  (sleep 1; {_HIDE_CURSOR_COMMAND}) &",
+            f"if [ -x {quoted_wtype} ]; then",
+            f"  (sleep 1; {quoted_wtype} {_HIDE_CURSOR_COMMAND}) &",
             "fi",
-            "if command -v wtype >/dev/null 2>&1 && command -v swayidle >/dev/null 2>&1; then",
+            f"if [ -x {quoted_wtype} ] && [ -x {quoted_swayidle} ]; then",
             f"  {idle_command}",
             '  idle_pid="$!"',
             "fi",
@@ -127,8 +130,8 @@ def cursor_keybind_block(indent: str = "    ") -> str:
     return "\n".join(
         [
             f"{indent}{CURSOR_RC_BEGIN}",
-            f'{indent}<keybind key="W-F12">',
-            f'{action_indent}<action name="WarpCursor" to="output" x="8" y="8" />',
+            f'{indent}<keybind key="{CURSOR_KEYBIND}">',
+            f'{action_indent}<action name="WarpCursor" x="-1" y="-1" />',
             f'{action_indent}<action name="HideCursor" />',
             f"{indent}</keybind>",
             f"{indent}{CURSOR_RC_END}",
@@ -137,6 +140,7 @@ def cursor_keybind_block(indent: str = "    ") -> str:
 
 
 def upsert_cursor_keybind(original: str) -> str:
+    original = normalize_labwc_rc_xml(original)
     block = cursor_keybind_block()
     keyboard_section = "\n".join(
         [
@@ -206,12 +210,23 @@ class WebAppKioskStep:
             raise UserFacingError(
                 "Chromium was not found on this Pi. Install Chromium and run the wizard again."
             )
+        wtype = host.wtype_command()
+        swayidle = host.swayidle_command()
+        if wtype is None or swayidle is None:
+            host.ensure_packages_installed(("wtype", "swayidle"))
+            wtype = host.wtype_command()
+            swayidle = host.swayidle_command()
+        if wtype is None or swayidle is None:
+            raise UserFacingError(
+                "wtype and swayidle could not be prepared on this Pi. "
+                "Install those packages and run the wizard again."
+            )
 
         home = host.home()
         host.mkdir(f"{home}/.config/pi-kiosk")
         host.write_file(
             launcher_path(home),
-            launcher_script(browser, deployment.app_dir),
+            launcher_script(browser, deployment.app_dir, wtype, swayidle),
         )
 
         autostart_path = f"{home}/.config/labwc/autostart"
@@ -244,7 +259,7 @@ class WebAppKioskStep:
         report = (
             f"Done: webapp kiosk deployed from {deployment.repo_ref} using "
             f"{deployment.artifact_dir}/. Chromium will start on the next graphical login."
-            " If wtype and swayidle are installed, the mouse cursor will hide after idle."
+            " The mouse cursor will hide after idle."
         )
         if opened_now:
             report += " It was also opened now."

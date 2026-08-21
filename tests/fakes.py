@@ -27,6 +27,8 @@ class FakeHost:
         desktop_session_returncode: int = 0,
         deployed_webapp: WebAppDeployment | None = None,
         chromium: str | None = "chromium-browser",
+        wtype: str | None = "/usr/bin/wtype",
+        swayidle: str | None = "/usr/bin/swayidle",
         touchscreen: bool = False,
         rustdesk_install: RustDeskInstall | None = None,
     ) -> None:
@@ -43,6 +45,8 @@ class FakeHost:
             artifact_dir="build",
         )
         self.chromium = chromium
+        self.wtype = wtype
+        self.swayidle = swayidle
         self.touchscreen = touchscreen
         self.rustdesk_install = rustdesk_install or RustDeskInstall(
             rustdesk_id="123 456 789",
@@ -55,6 +59,7 @@ class FakeHost:
         self.launched_kiosk_paths: list[str] = []
         self.rustdesk_progress_messages: list[str] = []
         self.rustdesk_passwords: list[str] = []
+        self.installed_packages: list[tuple[str, ...]] = []
         self.directories: set[str] = set()
 
     def home(self) -> str:
@@ -120,6 +125,19 @@ class FakeHost:
 
     def chromium_command(self) -> str | None:
         return self.chromium
+
+    def wtype_command(self) -> str | None:
+        return self.wtype
+
+    def swayidle_command(self) -> str | None:
+        return self.swayidle
+
+    def ensure_packages_installed(self, packages: tuple[str, ...]) -> None:
+        self.installed_packages.append(packages)
+        if "wtype" in packages and self.wtype is None:
+            self.wtype = "/usr/bin/wtype"
+        if "swayidle" in packages and self.swayidle is None:
+            self.swayidle = "/usr/bin/swayidle"
 
     def launch_kiosk_now(self, launcher: str) -> None:
         self.launched_kiosk_paths.append(launcher)
