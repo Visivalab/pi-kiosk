@@ -5,7 +5,6 @@ from tests.fakes import FakeHost
 
 from pi_kiosk.host import WebAppDeployment, WebAppSource
 from pi_kiosk.steps.webapp_kiosk import (
-    CURSOR_AUTOSTART_BEGIN,
     CURSOR_RC_BEGIN,
     KIOSK_AUTOSTART_BEGIN,
     WebAppKioskStep,
@@ -78,6 +77,12 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
             host.launched_kiosk_paths,
             [launcher_path(host.home())],
         )
+        self.assertEqual(
+            host.desktop_session_commands,
+            [
+                ["labwc", "--reconfigure"],
+            ],
+        )
         self.assertIn("opened now", report.lower())
 
     def test_does_not_open_app_now_when_user_declines(self):
@@ -115,15 +120,19 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
         )
         autostart = host.files["/home/pi/.config/labwc/autostart"]
         self.assertIn(KIOSK_AUTOSTART_BEGIN, autostart)
-        self.assertIn(CURSOR_AUTOSTART_BEGIN, autostart)
         self.assertIn(f"bash {launcher_path(host.home())}", autostart)
-        self.assertIn("swayidle timeout 5 'wtype -M logo -k F12'", autostart)
         rc_xml = host.files["/home/pi/.config/labwc/rc.xml"]
         self.assertIn(CURSOR_RC_BEGIN, rc_xml)
         self.assertIn('<keybind key="W-F12">', rc_xml)
         self.assertIn('<action name="HideCursor" />', rc_xml)
         launcher = host.files[launcher_path(host.home())]
         self.assertIn("python3 -m http.server 8080 --bind 127.0.0.1", launcher)
+        self.assertIn('idle_pid=""', launcher)
+        self.assertIn("if command -v wtype >/dev/null 2>&1; then", launcher)
+        self.assertIn('(sleep 1; wtype -M logo -k F12 >/dev/null 2>&1 || true) &', launcher)
+        self.assertIn("swayidle timeout 5 'wtype -M logo -k F12 >/dev/null 2>&1 || true'", launcher)
+        self.assertIn('  if [ -n "$idle_pid" ]; then', launcher)
+        self.assertIn('    kill "$idle_pid" >/dev/null 2>&1 || true', launcher)
         self.assertIn("chromium-browser", launcher)
         self.assertIn("http://127.0.0.1:8080", launcher)
         self.assertIn("/home/pi/.local/share/pi-kiosk/webapp/current", launcher)
@@ -171,7 +180,6 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
 
         autostart = host.files[path]
         self.assertEqual(autostart.count(KIOSK_AUTOSTART_BEGIN), 1)
-        self.assertEqual(autostart.count(CURSOR_AUTOSTART_BEGIN), 1)
         self.assertNotIn("old.sh", autostart)
         self.assertNotIn("old cursor command", autostart)
 

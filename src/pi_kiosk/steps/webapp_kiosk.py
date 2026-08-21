@@ -12,8 +12,8 @@ from pi_kiosk.ui import UI
 
 KIOSK_AUTOSTART_BEGIN = "# pi-kiosk-setup:webapp-kiosk-begin"
 KIOSK_AUTOSTART_END = "# pi-kiosk-setup:webapp-kiosk-end"
-CURSOR_AUTOSTART_BEGIN = "# pi-kiosk-setup:cursor-hide-begin"
-CURSOR_AUTOSTART_END = "# pi-kiosk-setup:cursor-hide-end"
+LEGACY_CURSOR_AUTOSTART_BEGIN = "# pi-kiosk-setup:cursor-hide-begin"
+LEGACY_CURSOR_AUTOSTART_END = "# pi-kiosk-setup:cursor-hide-end"
 CURSOR_RC_BEGIN = "<!-- pi-kiosk-setup:cursor-hide-begin -->"
 CURSOR_RC_END = "<!-- pi-kiosk-setup:cursor-hide-end -->"
 KIOSK_PORT = 8080
@@ -22,6 +22,7 @@ _RC_XML_HEADER = '<?xml version="1.0"?>\n<labwc_config>\n'
 _RC_XML_FOOTER = "</labwc_config>\n"
 _REPO_PROMPT = "GitHub repo"
 _REPO_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+_HIDE_CURSOR_COMMAND = "wtype -M logo -k F12 >/dev/null 2>&1 || true"
 
 
 def normalize_source(value: str) -> WebAppSource:
@@ -68,6 +69,10 @@ def launcher_script(browser: str, app_dir: str) -> str:
     quoted_dir = shlex.quote(app_dir)
     quoted_browser = shlex.quote(browser)
     url = f"http://127.0.0.1:{KIOSK_PORT}"
+    idle_command = (
+        f"swayidle timeout {CURSOR_IDLE_SECONDS} "
+        f"'{_HIDE_CURSOR_COMMAND}' >/dev/null 2>&1 &"
+    )
     return "\n".join(
         [
             "#!/usr/bin/env bash",
@@ -76,12 +81,16 @@ def launcher_script(browser: str, app_dir: str) -> str:
             f"URL={shlex.quote(url)}",
             'LOG_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/pi-kiosk"',
             'LOG_FILE="$LOG_ROOT/webapp-server.log"',
+            'idle_pid=""',
             'mkdir -p "$LOG_ROOT"',
             'cd "$APP_DIR"',
             f'python3 -m http.server {KIOSK_PORT} --bind 127.0.0.1 >"$LOG_FILE" 2>&1 &',
             'server_pid="$!"',
             'cleanup() {',
             '  kill "$server_pid" >/dev/null 2>&1 || true',
+            '  if [ -n "$idle_pid" ]; then',
+            '    kill "$idle_pid" >/dev/null 2>&1 || true',
+            '  fi',
             '}',
             'trap cleanup EXIT',
             "for _ in 1 2 3 4 5; do",
@@ -90,23 +99,27 @@ def launcher_script(browser: str, app_dir: str) -> str:
             "  fi",
             "  sleep 0.2",
             "done",
+            "if command -v wtype >/dev/null 2>&1; then",
+            f"  (sleep 1; {_HIDE_CURSOR_COMMAND}) &",
+            "fi",
+            "if command -v wtype >/dev/null 2>&1 && command -v swayidle >/dev/null 2>&1; then",
+            f"  {idle_command}",
+            '  idle_pid="$!"',
+            "fi",
             f'{quoted_browser} --kiosk --incognito --noerrdialogs --disable-infobars "$URL"',
             "",
         ]
     )
 
 
-def cursor_autostart_script() -> str:
-    return "\n".join(
-        [
-            "if command -v wtype >/dev/null 2>&1; then",
-            "  (sleep 1; wtype -M logo -k F12 >/dev/null 2>&1 || true) &",
-            "fi",
-            "if command -v wtype >/dev/null 2>&1 && command -v swayidle >/dev/null 2>&1; then",
-            f"  swayidle timeout {CURSOR_IDLE_SECONDS} 'wtype -M logo -k F12' >/dev/null 2>&1 &",
-            "fi",
-        ]
-    )
+def remove_marked_block(original: str, begin: str, end: str) -> str:
+    if begin not in original or end not in original:
+        return original
+    pre, rest = original.split(begin, 1)
+    _, post = rest.split(end, 1)
+    if post.startswith("\n"):
+        post = post[1:]
+    return pre + post
 
 
 def cursor_keybind_block(indent: str = "    ") -> str:
@@ -203,11 +216,10 @@ class WebAppKioskStep:
 
         autostart_path = f"{home}/.config/labwc/autostart"
         host.mkdir(f"{home}/.config/labwc")
-        autostart = upsert_marked_block(
+        autostart = remove_marked_block(
             read_or_empty(host, autostart_path),
-            CURSOR_AUTOSTART_BEGIN,
-            CURSOR_AUTOSTART_END,
-            cursor_autostart_script(),
+            LEGACY_CURSOR_AUTOSTART_BEGIN,
+            LEGACY_CURSOR_AUTOSTART_END,
         )
         autostart = upsert_marked_block(
             autostart,
@@ -225,6 +237,7 @@ class WebAppKioskStep:
 
         opened_now = False
         if self._confirm is not None and self._confirm("Open the app now?", True):
+            host.run_in_desktop_session(["labwc", "--reconfigure"], check=False)
             host.launch_kiosk_now(launcher_path(home))
             opened_now = True
 
