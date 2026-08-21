@@ -5,6 +5,7 @@ import shlex
 from typing import Callable
 from urllib.parse import urlparse
 
+from pi_kiosk.choice import Choice
 from pi_kiosk.errors import UserFacingError
 from pi_kiosk.files import normalize_labwc_rc_xml, read_or_empty, upsert_marked_block
 from pi_kiosk.host import Host, WebAppSource
@@ -24,6 +25,31 @@ _REPO_PROMPT = "GitHub repo"
 _REPO_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 CURSOR_KEYBIND = "A-W-h"
 _HIDE_CURSOR_COMMAND = "-M alt -M logo -P h >/dev/null 2>&1 || true"
+NEXT_ACTION_PROMPT = (
+    "App is live on http://127.0.0.1:8080.\n"
+    "Choose what to do next."
+)
+_SIMULATE_AUTORUN = "simulate"
+_REBOOT = "reboot"
+_CLOSE = "close"
+_NEXT_ACTION_CHOICES = [
+    Choice(
+        id=_SIMULATE_AUTORUN,
+        label="Simulate autorun - just for testing, cursor may not automatically hide",
+    ),
+    Choice(
+        id=_REBOOT,
+        label="Reboot - More reliable, final production",
+    ),
+    Choice(
+        id=_CLOSE,
+        label="Close - Do nothing, the app is on http://127.0.0.1:8080",
+    ),
+]
+
+
+def action_url() -> str:
+    return f"http://127.0.0.1:{KIOSK_PORT}"
 
 
 def normalize_source(value: str) -> WebAppSource:
@@ -190,11 +216,11 @@ class WebAppKioskStep:
 
     def __init__(self) -> None:
         self._progress = None
-        self._confirm: Callable[[str, bool], bool] | None = None
+        self._choose: Callable[[str, list[Choice]], str] | None = None
 
     def ask(self, ui: UI) -> WebAppSource:
         self._progress = ui.progress
-        self._confirm = ui.confirm
+        self._choose = ui.choose
         while True:
             raw = ui.prompt(self.title)
             try:
@@ -250,16 +276,24 @@ class WebAppKioskStep:
             upsert_cursor_keybind(read_or_empty(host, rc_xml_path)),
         )
 
-        opened_now = False
-        if self._confirm is not None and self._confirm("Open the app now?", True):
+        next_action = _CLOSE
+        if self._choose is not None:
+            next_action = self._choose(NEXT_ACTION_PROMPT, _NEXT_ACTION_CHOICES)
+
+        action_report = f"The app is on {action_url()}."
+        if next_action == _SIMULATE_AUTORUN:
             host.launch_kiosk_now(launcher_path(home))
-            opened_now = True
+            action_report = (
+                "Simulated autorun for testing. Cursor may not automatically hide "
+                f"until the next graphical login. The app is on {action_url()}."
+            )
+        elif next_action == _REBOOT:
+            host.reboot()
+            action_report = "Rebooting now for the final production startup."
 
         report = (
             f"Done: webapp kiosk deployed from {deployment.repo_ref} using "
             f"{deployment.artifact_dir}/. Chromium will start on the next graphical login."
-            " The mouse cursor will hide after idle."
+            f" The mouse cursor will hide after idle. {action_report}"
         )
-        if opened_now:
-            report += " It was also opened now."
         return report

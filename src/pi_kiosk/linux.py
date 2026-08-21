@@ -190,15 +190,18 @@ class LinuxHost:
         command = [
             "sh",
             "-lc",
-            " && ".join(
+            " ".join(
                 [
-                    "labwc --reconfigure",
-                    "sleep 1",
+                    "labwc --reconfigure >/dev/null 2>&1 || true;",
+                    "sleep 1;",
                     f"nohup bash {shlex.quote(launcher)} >/dev/null 2>&1 </dev/null &",
                 ]
             ),
         ]
         self.run_in_desktop_session(command, check=True)
+
+    def reboot(self) -> None:
+        subprocess.run(["reboot"], check=True, text=True)
 
     def touchscreen_present(self) -> bool:
         try:

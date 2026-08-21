@@ -7,6 +7,7 @@ from tests.fakes import FakeHost
 from pi_kiosk.app import NeedRoot, Wizard
 from pi_kiosk.cli import main
 from pi_kiosk.linux import NeedSudoUser
+from pi_kiosk.steps.webapp_kiosk import NEXT_ACTION_PROMPT
 from pi_kiosk.terminal_ui import TerminalUI
 
 
@@ -37,6 +38,7 @@ class CliTests(unittest.TestCase):
                     "Screen rotation": "none",
                     "RustDesk password": "secret-pass",
                     "GitHub repo": "Visivalab/demo-app",
+                    NEXT_ACTION_PROMPT: "close",
                 }
             ),
             stderr=io.StringIO(),

@@ -7,6 +7,8 @@ from pi_kiosk.host import WebAppDeployment, WebAppSource
 from pi_kiosk.steps.webapp_kiosk import (
     CURSOR_RC_BEGIN,
     KIOSK_AUTOSTART_BEGIN,
+    NEXT_ACTION_PROMPT,
+    action_url,
     WebAppKioskStep,
     launcher_path,
     normalize_source,
@@ -60,12 +62,12 @@ class AskWebAppKioskStepTests(unittest.TestCase):
 
 
 class ApplyWebAppKioskStepTests(unittest.TestCase):
-    def test_opens_app_now_when_user_confirms(self):
+    def test_simulates_autorun_when_user_chooses_test_option(self):
         host = FakeHost()
         ui = FakeUI(
             answers={
                 "GitHub repo": "Visivalab/demo-app",
-                "Open the app now?": "y",
+                NEXT_ACTION_PROMPT: "simulate",
             }
         )
         step = WebAppKioskStep()
@@ -77,15 +79,16 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
             host.launched_kiosk_paths,
             [launcher_path(host.home())],
         )
+        self.assertFalse(host.rebooted)
         self.assertEqual(host.desktop_session_commands, [])
-        self.assertIn("opened now", report.lower())
+        self.assertIn("simulated autorun", report.lower())
 
-    def test_does_not_open_app_now_when_user_declines(self):
+    def test_reboots_when_user_chooses_production_option(self):
         host = FakeHost()
         ui = FakeUI(
             answers={
                 "GitHub repo": "Visivalab/demo-app",
-                "Open the app now?": "n",
+                NEXT_ACTION_PROMPT: "reboot",
             }
         )
         step = WebAppKioskStep()
@@ -94,7 +97,25 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
         report = step.apply(host, source)
 
         self.assertEqual(host.launched_kiosk_paths, [])
-        self.assertNotIn("opened now", report.lower())
+        self.assertTrue(host.rebooted)
+        self.assertIn("rebooting", report.lower())
+
+    def test_closes_without_launch_when_user_chooses_close_option(self):
+        host = FakeHost()
+        ui = FakeUI(
+            answers={
+                "GitHub repo": "Visivalab/demo-app",
+                NEXT_ACTION_PROMPT: "close",
+            }
+        )
+        step = WebAppKioskStep()
+        source = step.ask(ui)
+
+        report = step.apply(host, source)
+
+        self.assertEqual(host.launched_kiosk_paths, [])
+        self.assertFalse(host.rebooted)
+        self.assertIn(action_url(), report)
 
     def test_deploys_build_and_writes_one_autostart_block(self):
         host = FakeHost(
@@ -105,7 +126,7 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
             )
         )
         step = WebAppKioskStep()
-        step.ask(FakeUI(answers={"GitHub repo": "Visivalab/demo-app", "Open the app now?": "n"}))
+        step.ask(FakeUI(answers={"GitHub repo": "Visivalab/demo-app", NEXT_ACTION_PROMPT: "close"}))
 
         report = step.apply(host, WebAppSource(repo_ref="Visivalab/demo-app"))
 
@@ -153,7 +174,9 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
             )
         )
 
-        report = WebAppKioskStep().apply(host, WebAppSource(repo_ref="Visivalab/demo-app"))
+        step = WebAppKioskStep()
+        step.ask(FakeUI(answers={"GitHub repo": "Visivalab/demo-app", NEXT_ACTION_PROMPT: "close"}))
+        report = step.apply(host, WebAppSource(repo_ref="Visivalab/demo-app"))
 
         self.assertIn("dist", report.lower())
 

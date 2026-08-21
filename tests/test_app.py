@@ -7,7 +7,7 @@ from pi_kiosk.app import NotARaspberryPi, Wizard
 from pi_kiosk.host import WebAppSource
 from pi_kiosk.steps.rotation import RotationStep
 from pi_kiosk.steps.rustdesk import RustDeskStep
-from pi_kiosk.steps.webapp_kiosk import WebAppKioskStep
+from pi_kiosk.steps.webapp_kiosk import NEXT_ACTION_PROMPT, WebAppKioskStep
 
 
 class WizardTests(unittest.TestCase):
@@ -18,6 +18,7 @@ class WizardTests(unittest.TestCase):
                 "Screen rotation": "clockwise",
                 "RustDesk password": "secret-pass",
                 "GitHub repo": "Visivalab/demo-app",
+                NEXT_ACTION_PROMPT: "simulate",
             }
         )
 
@@ -25,7 +26,7 @@ class WizardTests(unittest.TestCase):
 
         self.assertEqual(
             ui.prompts,
-            ["Screen rotation", "RustDesk password", "GitHub repo", "Open the app now?"],
+            ["Screen rotation", "RustDesk password", "GitHub repo", NEXT_ACTION_PROMPT],
         )
         self.assertEqual(len(reports), 6)
         self.assertTrue(all(item.lower().startswith("done:") for item in reports))

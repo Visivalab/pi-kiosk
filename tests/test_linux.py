@@ -93,7 +93,7 @@ class LinuxHostTests(unittest.TestCase):
             [
                 "sh",
                 "-lc",
-                "labwc --reconfigure && sleep 1 && nohup bash /home/pi/.config/pi-kiosk/webapp-kiosk.sh >/dev/null 2>&1 </dev/null &",
+                "labwc --reconfigure >/dev/null 2>&1 || true; sleep 1; nohup bash /home/pi/.config/pi-kiosk/webapp-kiosk.sh >/dev/null 2>&1 </dev/null &",
             ],
             check=True,
         )
