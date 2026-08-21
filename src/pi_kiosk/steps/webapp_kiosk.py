@@ -252,7 +252,6 @@ class WebAppKioskStep:
 
         opened_now = False
         if self._confirm is not None and self._confirm("Open the app now?", True):
-            host.run_in_desktop_session(["labwc", "--reconfigure"], check=False)
             host.launch_kiosk_now(launcher_path(home))
             opened_now = True
 

@@ -83,6 +83,21 @@ class LinuxHostTests(unittest.TestCase):
             text=True,
         )
 
+    def test_launch_kiosk_now_reconfigures_before_background_launch(self):
+        host = LinuxHost()
+
+        with mock.patch.object(host, "run_in_desktop_session") as run:
+            host.launch_kiosk_now("/home/pi/.config/pi-kiosk/webapp-kiosk.sh")
+
+        run.assert_called_once_with(
+            [
+                "sh",
+                "-lc",
+                "labwc --reconfigure && sleep 1 && nohup bash /home/pi/.config/pi-kiosk/webapp-kiosk.sh >/dev/null 2>&1 </dev/null &",
+            ],
+            check=True,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

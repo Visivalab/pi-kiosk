@@ -77,12 +77,7 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
             host.launched_kiosk_paths,
             [launcher_path(host.home())],
         )
-        self.assertEqual(
-            host.desktop_session_commands,
-            [
-                ["labwc", "--reconfigure"],
-            ],
-        )
+        self.assertEqual(host.desktop_session_commands, [])
         self.assertIn("opened now", report.lower())
 
     def test_does_not_open_app_now_when_user_declines(self):

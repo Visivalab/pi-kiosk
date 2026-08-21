@@ -190,7 +190,13 @@ class LinuxHost:
         command = [
             "sh",
             "-lc",
-            f"nohup bash {shlex.quote(launcher)} >/dev/null 2>&1 </dev/null &",
+            " && ".join(
+                [
+                    "labwc --reconfigure",
+                    "sleep 1",
+                    f"nohup bash {shlex.quote(launcher)} >/dev/null 2>&1 </dev/null &",
+                ]
+            ),
         ]
         self.run_in_desktop_session(command, check=True)
 
