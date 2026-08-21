@@ -5,6 +5,8 @@ from tests.fakes import FakeHost
 
 from pi_kiosk.host import WebAppDeployment, WebAppSource
 from pi_kiosk.steps.webapp_kiosk import (
+    CURSOR_AUTOSTART_BEGIN,
+    CURSOR_RC_BEGIN,
     KIOSK_AUTOSTART_BEGIN,
     WebAppKioskStep,
     launcher_path,
@@ -113,7 +115,13 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
         )
         autostart = host.files["/home/pi/.config/labwc/autostart"]
         self.assertIn(KIOSK_AUTOSTART_BEGIN, autostart)
+        self.assertIn(CURSOR_AUTOSTART_BEGIN, autostart)
         self.assertIn(f"bash {launcher_path(host.home())}", autostart)
+        self.assertIn("swayidle timeout 5 'wtype -M logo -k F12'", autostart)
+        rc_xml = host.files["/home/pi/.config/labwc/rc.xml"]
+        self.assertIn(CURSOR_RC_BEGIN, rc_xml)
+        self.assertIn('<keybind key="W-F12">', rc_xml)
+        self.assertIn('<action name="HideCursor" />', rc_xml)
         launcher = host.files[launcher_path(host.home())]
         self.assertIn("python3 -m http.server 8080 --bind 127.0.0.1", launcher)
         self.assertIn("chromium-browser", launcher)
@@ -149,6 +157,9 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
             files={
                 path: (
                     "wlopm --on '*' >/dev/null 2>&1 || true\n"
+                    "# pi-kiosk-setup:cursor-hide-begin\n"
+                    "old cursor command\n"
+                    "# pi-kiosk-setup:cursor-hide-end\n"
                     "# pi-kiosk-setup:webapp-kiosk-begin\n"
                     "bash /home/pi/.config/pi-kiosk/old.sh\n"
                     "# pi-kiosk-setup:webapp-kiosk-end\n"
@@ -160,7 +171,63 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
 
         autostart = host.files[path]
         self.assertEqual(autostart.count(KIOSK_AUTOSTART_BEGIN), 1)
+        self.assertEqual(autostart.count(CURSOR_AUTOSTART_BEGIN), 1)
         self.assertNotIn("old.sh", autostart)
+        self.assertNotIn("old cursor command", autostart)
+
+    def test_writes_cursor_hide_keybind_into_existing_keyboard_block(self):
+        path = "/home/pi/.config/labwc/rc.xml"
+        host = FakeHost(
+            files={
+                path: (
+                    '<?xml version="1.0"?>\n'
+                    "<labwc_config>\n"
+                    "  <keyboard>\n"
+                    "    <default />\n"
+                    "  </keyboard>\n"
+                    "</labwc_config>\n"
+                )
+            }
+        )
+
+        WebAppKioskStep().apply(host, WebAppSource(repo_ref="Visivalab/demo-app"))
+
+        rc_xml = host.files[path]
+        self.assertEqual(rc_xml.count(CURSOR_RC_BEGIN), 1)
+        self.assertIn("    <default />", rc_xml)
+        self.assertIn(
+            '      <action name="WarpCursor" to="output" x="8" y="8" />',
+            rc_xml,
+        )
+
+    def test_replaces_previous_cursor_hide_keybind_without_duplication(self):
+        path = "/home/pi/.config/labwc/rc.xml"
+        host = FakeHost(
+            files={
+                path: (
+                    '<?xml version="1.0"?>\n'
+                    "<labwc_config>\n"
+                    "  <keyboard>\n"
+                    "    <default />\n"
+                    "    <!-- pi-kiosk-setup:cursor-hide-begin -->\n"
+                    '    <keybind key="W-F12">\n'
+                    '      <action name="HideCursor" />\n'
+                    "    </keybind>\n"
+                    "    <!-- pi-kiosk-setup:cursor-hide-end -->\n"
+                    "  </keyboard>\n"
+                    "</labwc_config>\n"
+                )
+            }
+        )
+
+        WebAppKioskStep().apply(host, WebAppSource(repo_ref="Visivalab/demo-app"))
+
+        rc_xml = host.files[path]
+        self.assertEqual(rc_xml.count(CURSOR_RC_BEGIN), 1)
+        self.assertIn(
+            '      <action name="WarpCursor" to="output" x="8" y="8" />',
+            rc_xml,
+        )
 
     def test_rejects_missing_chromium(self):
         host = FakeHost(chromium=None)

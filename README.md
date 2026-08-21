@@ -45,6 +45,8 @@ with Imager, boot normally, run the command.
    - deploys `build/`, or `dist/` if `build/` is missing
    - serves the static app locally with `python3 -m http.server`
    - launches Chromium in kiosk mode on graphical login
+   - installs a labwc cursor-hide keybind and, when `wtype` and `swayidle`
+     are available, re-hides the mouse cursor after idle
 
 The account password is not deleted. It is still used for SSH and sudo.
 

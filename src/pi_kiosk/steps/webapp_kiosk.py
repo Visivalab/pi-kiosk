@@ -12,7 +12,14 @@ from pi_kiosk.ui import UI
 
 KIOSK_AUTOSTART_BEGIN = "# pi-kiosk-setup:webapp-kiosk-begin"
 KIOSK_AUTOSTART_END = "# pi-kiosk-setup:webapp-kiosk-end"
+CURSOR_AUTOSTART_BEGIN = "# pi-kiosk-setup:cursor-hide-begin"
+CURSOR_AUTOSTART_END = "# pi-kiosk-setup:cursor-hide-end"
+CURSOR_RC_BEGIN = "<!-- pi-kiosk-setup:cursor-hide-begin -->"
+CURSOR_RC_END = "<!-- pi-kiosk-setup:cursor-hide-end -->"
 KIOSK_PORT = 8080
+CURSOR_IDLE_SECONDS = 5
+_RC_XML_HEADER = '<?xml version="1.0"?>\n<labwc_config>\n'
+_RC_XML_FOOTER = "</labwc_config>\n"
 _REPO_PROMPT = "GitHub repo"
 _REPO_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
@@ -89,6 +96,75 @@ def launcher_script(browser: str, app_dir: str) -> str:
     )
 
 
+def cursor_autostart_script() -> str:
+    return "\n".join(
+        [
+            "if command -v wtype >/dev/null 2>&1; then",
+            "  (sleep 1; wtype -M logo -k F12 >/dev/null 2>&1 || true) &",
+            "fi",
+            "if command -v wtype >/dev/null 2>&1 && command -v swayidle >/dev/null 2>&1; then",
+            f"  swayidle timeout {CURSOR_IDLE_SECONDS} 'wtype -M logo -k F12' >/dev/null 2>&1 &",
+            "fi",
+        ]
+    )
+
+
+def cursor_keybind_block(indent: str = "    ") -> str:
+    action_indent = f"{indent}  "
+    return "\n".join(
+        [
+            f"{indent}{CURSOR_RC_BEGIN}",
+            f'{indent}<keybind key="W-F12">',
+            f'{action_indent}<action name="WarpCursor" to="output" x="8" y="8" />',
+            f'{action_indent}<action name="HideCursor" />',
+            f"{indent}</keybind>",
+            f"{indent}{CURSOR_RC_END}",
+        ]
+    )
+
+
+def upsert_cursor_keybind(original: str) -> str:
+    block = cursor_keybind_block()
+    keyboard_section = "\n".join(
+        [
+            "  <keyboard>",
+            "    <default />",
+            block,
+            "  </keyboard>",
+        ]
+    )
+    if not original.strip():
+        return f"{_RC_XML_HEADER}{keyboard_section}\n{_RC_XML_FOOTER}"
+    if CURSOR_RC_BEGIN in original and CURSOR_RC_END in original:
+        pre, rest = original.split(CURSOR_RC_BEGIN, 1)
+        _, post = rest.split(CURSOR_RC_END, 1)
+        if post.startswith("\n"):
+            post = post[1:]
+        return f"{pre}{block}\n{post}"
+
+    keyboard_self_closing = "  <keyboard />"
+    if keyboard_self_closing in original:
+        return original.replace(keyboard_self_closing, keyboard_section, 1)
+
+    keyboard_close = "  </keyboard>"
+    if keyboard_close in original:
+        before, after = original.rsplit(keyboard_close, 1)
+        if before and not before.endswith("\n"):
+            before += "\n"
+        return f"{before}{block}\n{keyboard_close}{after}"
+
+    closing = "</labwc_config>"
+    if closing in original:
+        before, after = original.rsplit(closing, 1)
+        if before and not before.endswith("\n"):
+            before += "\n"
+        return f"{before}{keyboard_section}\n{closing}{after}"
+
+    if original and not original.endswith("\n"):
+        original += "\n"
+    return f"{original}{keyboard_section}\n"
+
+
 class WebAppKioskStep:
     id = "webapp-kiosk"
     title = _REPO_PROMPT
@@ -127,13 +203,25 @@ class WebAppKioskStep:
 
         autostart_path = f"{home}/.config/labwc/autostart"
         host.mkdir(f"{home}/.config/labwc")
-        updated = upsert_marked_block(
+        autostart = upsert_marked_block(
             read_or_empty(host, autostart_path),
+            CURSOR_AUTOSTART_BEGIN,
+            CURSOR_AUTOSTART_END,
+            cursor_autostart_script(),
+        )
+        autostart = upsert_marked_block(
+            autostart,
             KIOSK_AUTOSTART_BEGIN,
             KIOSK_AUTOSTART_END,
             f"bash {launcher_path(home)}",
         )
-        host.write_file(autostart_path, updated)
+        host.write_file(autostart_path, autostart)
+
+        rc_xml_path = f"{home}/.config/labwc/rc.xml"
+        host.write_file(
+            rc_xml_path,
+            upsert_cursor_keybind(read_or_empty(host, rc_xml_path)),
+        )
 
         opened_now = False
         if self._confirm is not None and self._confirm("Open the app now?", True):
@@ -143,6 +231,7 @@ class WebAppKioskStep:
         report = (
             f"Done: webapp kiosk deployed from {deployment.repo_ref} using "
             f"{deployment.artifact_dir}/. Chromium will start on the next graphical login."
+            " If wtype and swayidle are installed, the mouse cursor will hide after idle."
         )
         if opened_now:
             report += " It was also opened now."
