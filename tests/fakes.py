@@ -57,6 +57,7 @@ class FakeHost:
         self.webapp_deploy_requests: list[tuple[WebAppSource, tuple[str, ...]]] = []
         self.webapp_progress_messages: list[str] = []
         self.launched_kiosk_paths: list[str] = []
+        self.launched_server_paths: list[str] = []
         self.rebooted = False
         self.rustdesk_progress_messages: list[str] = []
         self.rustdesk_passwords: list[str] = []
@@ -142,6 +143,9 @@ class FakeHost:
 
     def launch_kiosk_now(self, launcher: str) -> None:
         self.launched_kiosk_paths.append(launcher)
+
+    def launch_webapp_server_now(self, launcher: str) -> None:
+        self.launched_server_paths.append(launcher)
 
     def reboot(self) -> None:
         self.rebooted = True

@@ -9,6 +9,7 @@ from pi_kiosk.steps.webapp_kiosk import (
     KIOSK_AUTOSTART_BEGIN,
     NEXT_ACTION_PROMPT,
     action_url,
+    log_tail_command,
     WebAppKioskStep,
     launcher_path,
     normalize_source,
@@ -79,9 +80,11 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
             host.launched_kiosk_paths,
             [launcher_path(host.home())],
         )
+        self.assertEqual(host.launched_server_paths, [])
         self.assertFalse(host.rebooted)
         self.assertEqual(host.desktop_session_commands, [])
         self.assertIn("simulated autorun", report.lower())
+        self.assertIn(log_tail_command(host.home()), report)
 
     def test_reboots_when_user_chooses_production_option(self):
         host = FakeHost()
@@ -97,8 +100,10 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
         report = step.apply(host, source)
 
         self.assertEqual(host.launched_kiosk_paths, [])
+        self.assertEqual(host.launched_server_paths, [])
         self.assertTrue(host.rebooted)
         self.assertIn("rebooting", report.lower())
+        self.assertIn(log_tail_command(host.home()), report)
 
     def test_closes_without_launch_when_user_chooses_close_option(self):
         host = FakeHost()
@@ -114,8 +119,10 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
         report = step.apply(host, source)
 
         self.assertEqual(host.launched_kiosk_paths, [])
+        self.assertEqual(host.launched_server_paths, [launcher_path(host.home())])
         self.assertFalse(host.rebooted)
-        self.assertIn(action_url(), report)
+        self.assertIn(f"is live on {action_url()}", report)
+        self.assertIn(log_tail_command(host.home()), report)
 
     def test_deploys_build_and_writes_one_autostart_block(self):
         host = FakeHost(
@@ -143,7 +150,10 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
         self.assertIn('<keybind key="A-W-h">', rc_xml)
         self.assertIn('<action name="HideCursor" />', rc_xml)
         launcher = host.files[launcher_path(host.home())]
+        self.assertIn('MODE="${1:-kiosk}"', launcher)
         self.assertIn("python3 -m http.server 8080 --bind 127.0.0.1", launcher)
+        self.assertIn('if [ "$MODE" = "server-only" ]; then', launcher)
+        self.assertIn('  wait "$server_pid"', launcher)
         self.assertIn('idle_pid=""', launcher)
         self.assertIn("(sleep 1; /usr/bin/wtype -M alt -M logo -P h >/dev/null 2>&1 || true) &", launcher)
         self.assertIn("if [ -x /usr/bin/wtype ]; then", launcher)

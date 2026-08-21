@@ -26,7 +26,7 @@ _REPO_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 CURSOR_KEYBIND = "A-W-h"
 _HIDE_CURSOR_COMMAND = "-M alt -M logo -P h >/dev/null 2>&1 || true"
 NEXT_ACTION_PROMPT = (
-    "App is live on http://127.0.0.1:8080.\n"
+    "The deployed app can be served on http://127.0.0.1:8080.\n"
     "Choose what to do next."
 )
 _SIMULATE_AUTORUN = "simulate"
@@ -43,13 +43,21 @@ _NEXT_ACTION_CHOICES = [
     ),
     Choice(
         id=_CLOSE,
-        label="Close - Do nothing, the app is on http://127.0.0.1:8080",
+        label="Close - Leave the app running on http://127.0.0.1:8080 without opening Chromium",
     ),
 ]
 
 
 def action_url() -> str:
     return f"http://127.0.0.1:{KIOSK_PORT}"
+
+
+def log_path(home: str) -> str:
+    return f"{home}/.local/state/pi-kiosk/webapp-server.log"
+
+
+def log_tail_command(home: str) -> str:
+    return f"tail -f {shlex.quote(log_path(home))}"
 
 
 def normalize_source(value: str) -> WebAppSource:
@@ -108,6 +116,7 @@ def launcher_script(browser: str, app_dir: str, wtype: str, swayidle: str) -> st
             "set -euo pipefail",
             f"APP_DIR={quoted_dir}",
             f"URL={shlex.quote(url)}",
+            'MODE="${1:-kiosk}"',
             'LOG_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/pi-kiosk"',
             'LOG_FILE="$LOG_ROOT/webapp-server.log"',
             'idle_pid=""',
@@ -128,6 +137,10 @@ def launcher_script(browser: str, app_dir: str, wtype: str, swayidle: str) -> st
             "  fi",
             "  sleep 0.2",
             "done",
+            'if [ "$MODE" = "server-only" ]; then',
+            '  wait "$server_pid"',
+            "  exit 0",
+            "fi",
             f"if [ -x {quoted_wtype} ]; then",
             f"  (sleep 1; {quoted_wtype} {_HIDE_CURSOR_COMMAND}) &",
             "fi",
@@ -280,7 +293,8 @@ class WebAppKioskStep:
         if self._choose is not None:
             next_action = self._choose(NEXT_ACTION_PROMPT, _NEXT_ACTION_CHOICES)
 
-        action_report = f"The app is on {action_url()}."
+        log_report = f"Attach a terminal to the server logs with: {log_tail_command(home)}."
+        action_report = f"The app will be on {action_url()} after reboot."
         if next_action == _SIMULATE_AUTORUN:
             host.launch_kiosk_now(launcher_path(home))
             action_report = (
@@ -290,10 +304,13 @@ class WebAppKioskStep:
         elif next_action == _REBOOT:
             host.reboot()
             action_report = "Rebooting now for the final production startup."
+        elif next_action == _CLOSE:
+            host.launch_webapp_server_now(launcher_path(home))
+            action_report = f"The app is live on {action_url()} without opening Chromium."
 
         report = (
             f"Done: webapp kiosk deployed from {deployment.repo_ref} using "
             f"{deployment.artifact_dir}/. Chromium will start on the next graphical login."
-            f" The mouse cursor will hide after idle. {action_report}"
+            f" The mouse cursor will hide after idle. {action_report} {log_report}"
         )
         return report

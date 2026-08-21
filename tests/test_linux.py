@@ -98,6 +98,21 @@ class LinuxHostTests(unittest.TestCase):
             check=True,
         )
 
+    def test_launch_webapp_server_now_starts_server_only_mode(self):
+        host = LinuxHost()
+
+        with mock.patch.object(host, "run_in_desktop_session") as run:
+            host.launch_webapp_server_now("/home/pi/.config/pi-kiosk/webapp-kiosk.sh")
+
+        run.assert_called_once_with(
+            [
+                "sh",
+                "-lc",
+                "nohup bash /home/pi/.config/pi-kiosk/webapp-kiosk.sh server-only >/dev/null 2>&1 </dev/null &",
+            ],
+            check=True,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

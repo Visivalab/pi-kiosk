@@ -200,6 +200,14 @@ class LinuxHost:
         ]
         self.run_in_desktop_session(command, check=True)
 
+    def launch_webapp_server_now(self, launcher: str) -> None:
+        command = [
+            "sh",
+            "-lc",
+            f"nohup bash {shlex.quote(launcher)} server-only >/dev/null 2>&1 </dev/null &",
+        ]
+        self.run_in_desktop_session(command, check=True)
+
     def reboot(self) -> None:
         subprocess.run(["reboot"], check=True, text=True)
 
