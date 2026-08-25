@@ -7,6 +7,7 @@ from pi_kiosk.host import WebAppDeployment, WebAppSource
 from pi_kiosk.steps.webapp_kiosk import (
     CURSOR_RC_BEGIN,
     KIOSK_AUTOSTART_BEGIN,
+    NEXT_ACTION_CHOICES,
     NEXT_ACTION_PROMPT,
     action_url,
     log_tail_command,
@@ -17,6 +18,12 @@ from pi_kiosk.steps.webapp_kiosk import (
 
 
 class AskWebAppKioskStepTests(unittest.TestCase):
+    def test_close_choice_matches_server_only_behavior(self):
+        close_choice = next(choice for choice in NEXT_ACTION_CHOICES if choice.id == "close")
+
+        self.assertIn("app server", close_choice.label.lower())
+        self.assertIn("8080", close_choice.label)
+
     def test_accepts_owner_repo_input(self):
         ui = FakeUI(answers={"GitHub repo": "Visivalab/demo-app"})
 

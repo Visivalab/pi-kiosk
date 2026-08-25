@@ -7,45 +7,25 @@ from urllib.parse import urlparse
 
 from pi_kiosk.choice import Choice
 from pi_kiosk.errors import UserFacingError
-from pi_kiosk.files import normalize_labwc_rc_xml, read_or_empty, upsert_marked_block
 from pi_kiosk.host import Host, WebAppSource
+from pi_kiosk.steps.kiosk_common import (
+    CLOSE,
+    CURSOR_RC_BEGIN,
+    KIOSK_AUTOSTART_BEGIN,
+    NEXT_ACTION_CHOICES,
+    NEXT_ACTION_PROMPT,
+    REBOOT,
+    SIMULATE_AUTORUN,
+    install_cursor_keybind,
+    install_kiosk_autostart,
+)
 from pi_kiosk.ui import UI
 
-KIOSK_AUTOSTART_BEGIN = "# pi-kiosk-setup:webapp-kiosk-begin"
-KIOSK_AUTOSTART_END = "# pi-kiosk-setup:webapp-kiosk-end"
-LEGACY_CURSOR_AUTOSTART_BEGIN = "# pi-kiosk-setup:cursor-hide-begin"
-LEGACY_CURSOR_AUTOSTART_END = "# pi-kiosk-setup:cursor-hide-end"
-CURSOR_RC_BEGIN = "<!-- pi-kiosk-setup:cursor-hide-begin -->"
-CURSOR_RC_END = "<!-- pi-kiosk-setup:cursor-hide-end -->"
 KIOSK_PORT = 8080
 CURSOR_IDLE_SECONDS = 5
-_RC_XML_HEADER = '<?xml version="1.0"?>\n<labwc_config>\n'
-_RC_XML_FOOTER = "</labwc_config>\n"
 _REPO_PROMPT = "GitHub repo"
 _REPO_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
-CURSOR_KEYBIND = "A-W-h"
 _HIDE_CURSOR_COMMAND = "-M alt -M logo -P h >/dev/null 2>&1 || true"
-NEXT_ACTION_PROMPT = (
-    "The deployed app can be served on http://127.0.0.1:8080.\n"
-    "Choose what to do next."
-)
-_SIMULATE_AUTORUN = "simulate"
-_REBOOT = "reboot"
-_CLOSE = "close"
-_NEXT_ACTION_CHOICES = [
-    Choice(
-        id=_SIMULATE_AUTORUN,
-        label="Simulate autorun - just for testing, cursor may not automatically hide",
-    ),
-    Choice(
-        id=_REBOOT,
-        label="Reboot - More reliable, final production",
-    ),
-    Choice(
-        id=_CLOSE,
-        label="Close - Leave the app running on http://127.0.0.1:8080 without opening Chromium",
-    ),
-]
 
 
 def action_url() -> str:
@@ -153,74 +133,6 @@ def launcher_script(browser: str, app_dir: str, wtype: str, swayidle: str) -> st
         ]
     )
 
-
-def remove_marked_block(original: str, begin: str, end: str) -> str:
-    if begin not in original or end not in original:
-        return original
-    pre, rest = original.split(begin, 1)
-    _, post = rest.split(end, 1)
-    if post.startswith("\n"):
-        post = post[1:]
-    return pre + post
-
-
-def cursor_keybind_block(indent: str = "    ") -> str:
-    action_indent = f"{indent}  "
-    return "\n".join(
-        [
-            f"{indent}{CURSOR_RC_BEGIN}",
-            f'{indent}<keybind key="{CURSOR_KEYBIND}">',
-            f'{action_indent}<action name="WarpCursor" x="-1" y="-1" />',
-            f'{action_indent}<action name="HideCursor" />',
-            f"{indent}</keybind>",
-            f"{indent}{CURSOR_RC_END}",
-        ]
-    )
-
-
-def upsert_cursor_keybind(original: str) -> str:
-    original = normalize_labwc_rc_xml(original)
-    block = cursor_keybind_block()
-    keyboard_section = "\n".join(
-        [
-            "  <keyboard>",
-            "    <default />",
-            block,
-            "  </keyboard>",
-        ]
-    )
-    if not original.strip():
-        return f"{_RC_XML_HEADER}{keyboard_section}\n{_RC_XML_FOOTER}"
-    if CURSOR_RC_BEGIN in original and CURSOR_RC_END in original:
-        pre, rest = original.split(CURSOR_RC_BEGIN, 1)
-        _, post = rest.split(CURSOR_RC_END, 1)
-        if post.startswith("\n"):
-            post = post[1:]
-        return f"{pre}{block}\n{post}"
-
-    keyboard_self_closing = "  <keyboard />"
-    if keyboard_self_closing in original:
-        return original.replace(keyboard_self_closing, keyboard_section, 1)
-
-    keyboard_close = "  </keyboard>"
-    if keyboard_close in original:
-        before, after = original.rsplit(keyboard_close, 1)
-        if before and not before.endswith("\n"):
-            before += "\n"
-        return f"{before}{block}\n{keyboard_close}{after}"
-
-    closing = "</labwc_config>"
-    if closing in original:
-        before, after = original.rsplit(closing, 1)
-        if before and not before.endswith("\n"):
-            before += "\n"
-        return f"{before}{keyboard_section}\n{closing}{after}"
-
-    if original and not original.endswith("\n"):
-        original += "\n"
-    return f"{original}{keyboard_section}\n"
-
-
 class WebAppKioskStep:
     id = "webapp-kiosk"
     title = _REPO_PROMPT
@@ -268,43 +180,25 @@ class WebAppKioskStep:
             launcher_script(browser, deployment.app_dir, wtype, swayidle),
         )
 
-        autostart_path = f"{home}/.config/labwc/autostart"
-        host.mkdir(f"{home}/.config/labwc")
-        autostart = remove_marked_block(
-            read_or_empty(host, autostart_path),
-            LEGACY_CURSOR_AUTOSTART_BEGIN,
-            LEGACY_CURSOR_AUTOSTART_END,
-        )
-        autostart = upsert_marked_block(
-            autostart,
-            KIOSK_AUTOSTART_BEGIN,
-            KIOSK_AUTOSTART_END,
-            f"bash {launcher_path(home)}",
-        )
-        host.write_file(autostart_path, autostart)
+        install_kiosk_autostart(host, launcher_path(home))
+        install_cursor_keybind(host)
 
-        rc_xml_path = f"{home}/.config/labwc/rc.xml"
-        host.write_file(
-            rc_xml_path,
-            upsert_cursor_keybind(read_or_empty(host, rc_xml_path)),
-        )
-
-        next_action = _CLOSE
+        next_action = CLOSE
         if self._choose is not None:
-            next_action = self._choose(NEXT_ACTION_PROMPT, _NEXT_ACTION_CHOICES)
+            next_action = self._choose(NEXT_ACTION_PROMPT, NEXT_ACTION_CHOICES)
 
         log_report = f"Attach a terminal to the server logs with: {log_tail_command(home)}."
         action_report = f"The app will be on {action_url()} after reboot."
-        if next_action == _SIMULATE_AUTORUN:
+        if next_action == SIMULATE_AUTORUN:
             host.launch_kiosk_now(launcher_path(home))
             action_report = (
                 "Simulated autorun for testing. Cursor may not automatically hide "
                 f"until the next graphical login. The app is on {action_url()}."
             )
-        elif next_action == _REBOOT:
+        elif next_action == REBOOT:
             host.reboot()
             action_report = "Rebooting now for the final production startup."
-        elif next_action == _CLOSE:
+        elif next_action == CLOSE:
             host.launch_webapp_server_now(launcher_path(home))
             action_report = f"The app is live on {action_url()} without opening Chromium."
 

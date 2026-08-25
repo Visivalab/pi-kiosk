@@ -5,9 +5,9 @@ from tests.fakes import FakeHost
 
 from pi_kiosk.app import NotARaspberryPi, Wizard
 from pi_kiosk.host import WebAppSource
+from pi_kiosk.steps.project_kiosk import NEXT_ACTION_PROMPT, ProjectKioskStep, TYPE_OF_PROJECT_PROMPT
 from pi_kiosk.steps.rotation import RotationStep
 from pi_kiosk.steps.rustdesk import RustDeskStep
-from pi_kiosk.steps.webapp_kiosk import NEXT_ACTION_PROMPT, WebAppKioskStep
 
 
 class WizardTests(unittest.TestCase):
@@ -17,6 +17,7 @@ class WizardTests(unittest.TestCase):
             answers={
                 "Screen rotation": "clockwise",
                 "RustDesk password": "secret-pass",
+                TYPE_OF_PROJECT_PROMPT: "webapp",
                 "GitHub repo": "Visivalab/demo-app",
                 NEXT_ACTION_PROMPT: "simulate",
             }
@@ -26,7 +27,13 @@ class WizardTests(unittest.TestCase):
 
         self.assertEqual(
             ui.prompts,
-            ["Screen rotation", "RustDesk password", "GitHub repo", NEXT_ACTION_PROMPT],
+            [
+                "Screen rotation",
+                "RustDesk password",
+                TYPE_OF_PROJECT_PROMPT,
+                "GitHub repo",
+                NEXT_ACTION_PROMPT,
+            ],
         )
         self.assertEqual(len(reports), 6)
         self.assertTrue(all(item.lower().startswith("done:") for item in reports))
@@ -70,6 +77,7 @@ class WizardTests(unittest.TestCase):
             answers={
                 "Screen rotation": "none",
                 "RustDesk password": "secret-pass",
+                TYPE_OF_PROJECT_PROMPT: "webapp",
                 "GitHub repo": "Visivalab/demo-app",
             }
         )
@@ -83,5 +91,5 @@ class WizardTests(unittest.TestCase):
     def test_rotation_step_is_the_only_question(self):
         self.assertEqual(
             Wizard.question_step_ids(),
-            [RotationStep.id, RustDeskStep.id, WebAppKioskStep.id],
+            [RotationStep.id, RustDeskStep.id, ProjectKioskStep.id],
         )

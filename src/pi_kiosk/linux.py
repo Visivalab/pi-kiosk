@@ -12,10 +12,17 @@ import tempfile
 from pathlib import Path
 from typing import Callable
 from urllib import error, request
+from urllib.parse import unquote, urlparse
 
 from pi_kiosk.detect import looks_like_raspberry_pi
 from pi_kiosk.errors import UserFacingError
-from pi_kiosk.host import RustDeskInstall, WebAppDeployment, WebAppSource
+from pi_kiosk.host import (
+    RustDeskInstall,
+    VideoDeployment,
+    VideoSource,
+    WebAppDeployment,
+    WebAppSource,
+)
 
 
 class NeedSudoUser(RuntimeError):
@@ -173,6 +180,48 @@ class LinuxHost:
                 return found
         return None
 
+    def deploy_video(
+        self,
+        source: VideoSource,
+        progress: Callable[[str], None] | None = None,
+    ) -> VideoDeployment:
+        video_root = Path(self.home()) / ".local" / "share" / "pi-kiosk" / "video"
+        current_dir = video_root / "current"
+        video_root.mkdir(parents=True, exist_ok=True)
+        self._own_within_home(video_root)
+
+        with tempfile.TemporaryDirectory():
+            self._report_progress(progress, "Preparing Dropbox download")
+            file_name = _video_file_name(source.download_url)
+            stage_dir = video_root / "next"
+            if stage_dir.exists():
+                shutil.rmtree(stage_dir)
+            stage_dir.mkdir(parents=True, exist_ok=True)
+
+            video_path = self._download_video_file(
+                source.download_url,
+                stage_dir,
+                default_file_name=file_name,
+                progress=progress,
+            )
+            if video_path.stat().st_size == 0:
+                raise UserFacingError("Downloaded video file was empty.")
+
+            self._report_progress(progress, "Deploying video file")
+            if current_dir.exists():
+                shutil.rmtree(current_dir)
+            stage_dir.replace(current_dir)
+
+        self._own_tree(current_dir)
+        deployed_path = current_dir / video_path.name
+        return VideoDeployment(
+            video_path=str(deployed_path),
+            file_name=video_path.name,
+        )
+
+    def mpv_command(self) -> str | None:
+        return shutil.which("mpv")
+
     def wtype_command(self) -> str | None:
         return shutil.which("wtype")
 
@@ -208,6 +257,9 @@ class LinuxHost:
         ]
         self.run_in_desktop_session(command, check=True)
 
+    def launch_video_now(self, launcher: str) -> None:
+        self.launch_kiosk_now(launcher)
+
     def reboot(self) -> None:
         subprocess.run(["reboot"], check=True, text=True)
 
@@ -237,7 +289,11 @@ class LinuxHost:
             package_path = temp_root / asset["name"]
 
             self._report_progress(progress, "Downloading RustDesk package")
-            self._download_file(str(asset["browser_download_url"]), package_path)
+            self._download_file(
+                str(asset["browser_download_url"]),
+                package_path,
+                description="RustDesk package",
+            )
 
             self._report_progress(progress, "Installing RustDesk package")
             subprocess.run(
@@ -308,7 +364,7 @@ class LinuxHost:
             f"https://codeload.github.com/{owner}/{repo}/tar.gz/refs/heads/{default_branch}"
         )
         archive_path = target_dir / "repo.tar.gz"
-        self._download_file(archive_url, archive_path)
+        self._download_file(archive_url, archive_path, description="webapp archive")
         with tarfile.open(archive_path, "r:gz") as bundle:
             bundle.extractall(target_dir)
         roots = [entry for entry in target_dir.iterdir() if entry.is_dir()]
@@ -347,18 +403,94 @@ class LinuxHost:
                 f"Could not reach GitHub to download the webapp: {exc.reason}."
             ) from exc
 
-    def _download_file(self, url: str, target: Path) -> None:
+    def _download_file(
+        self,
+        url: str,
+        target: Path,
+        description: str = "file",
+        progress: Callable[[str], None] | None = None,
+    ) -> None:
         headers = {"User-Agent": "pi-kiosk-setup"}
         req = request.Request(url, headers=headers)
         try:
             with request.urlopen(req) as response, target.open("wb") as stream:
-                shutil.copyfileobj(response, stream)
+                self._copy_response_body(
+                    response,
+                    stream,
+                    description=description,
+                    progress=progress,
+                )
         except error.HTTPError as exc:
-            raise UserFacingError(f"Failed to download the webapp archive (HTTP {exc.code}).") from exc
+            raise UserFacingError(f"Failed to download the {description} (HTTP {exc.code}).") from exc
         except error.URLError as exc:
-            raise UserFacingError(
-                f"Could not download the webapp archive: {exc.reason}."
-            ) from exc
+            raise UserFacingError(f"Could not download the {description}: {exc.reason}.") from exc
+
+    def _download_video_file(
+        self,
+        url: str,
+        target_dir: Path,
+        default_file_name: str,
+        progress: Callable[[str], None] | None = None,
+    ) -> Path:
+        headers = {"User-Agent": "pi-kiosk-setup"}
+        req = request.Request(url, headers=headers)
+        try:
+            with request.urlopen(req) as response:
+                _validate_video_content_type(response)
+                file_name = _content_disposition_filename(response) or default_file_name
+                target = target_dir / file_name
+                with target.open("wb") as stream:
+                    bytes_written = self._copy_response_body(
+                        response,
+                        stream,
+                        description="video file",
+                        progress=progress,
+                    )
+                expected_size = _content_length(response)
+                if expected_size is not None and bytes_written != expected_size:
+                    raise UserFacingError(
+                        f"Downloaded video file was incomplete: expected {expected_size} bytes "
+                        f"but received {bytes_written}."
+                    )
+                if bytes_written == 0:
+                    raise UserFacingError("Downloaded video file was empty.")
+                return target
+        except error.HTTPError as exc:
+            raise UserFacingError(f"Failed to download the video file (HTTP {exc.code}).") from exc
+        except error.URLError as exc:
+            raise UserFacingError(f"Could not download the video file: {exc.reason}.") from exc
+
+    def _copy_response_body(
+        self,
+        response: object,
+        stream: object,
+        description: str,
+        progress: Callable[[str], None] | None = None,
+    ) -> int:
+        total_size = _content_length(response)
+        bytes_written = 0
+        if total_size is not None and total_size > 0:
+            self._report_progress(progress, f"Downloading {description} (0%)")
+            last_reported = 0
+            while True:
+                chunk = response.read(1024 * 256)
+                if not chunk:
+                    break
+                stream.write(chunk)
+                bytes_written += len(chunk)
+                percent = min(100, int(bytes_written * 100 / total_size))
+                if percent >= last_reported + 5 or percent == 100:
+                    self._report_progress(progress, f"Downloading {description} ({percent}%)")
+                    last_reported = percent
+            return bytes_written
+
+        while True:
+            chunk = response.read(1024 * 256)
+            if not chunk:
+                break
+            stream.write(chunk)
+            bytes_written += len(chunk)
+        return bytes_written
 
     def _find_artifact_dir(self, root: Path, artifact_dirs: tuple[str, ...]) -> Path | None:
         for name in artifact_dirs:
@@ -450,6 +582,87 @@ def _libinput_reports_touch(stdout: str) -> bool:
         if line.lstrip().startswith("Capabilities:") and "touch" in line.lower():
             return True
     return False
+
+
+def _video_file_name(url: str) -> str:
+    path = urlparse(url).path
+    name = Path(unquote(path)).name
+    return name or "video.bin"
+
+
+def _content_length(response: object) -> int | None:
+    headers = getattr(response, "headers", None)
+    if headers is None:
+        return None
+    value = headers.get("Content-Length")
+    if value is None:
+        return None
+    try:
+        size = int(value)
+    except (TypeError, ValueError):
+        return None
+    if size <= 0:
+        return None
+    return size
+
+
+def _header_value(response: object, name: str) -> str | None:
+    headers = getattr(response, "headers", None)
+    if headers is None:
+        return None
+    value = headers.get(name)
+    if not isinstance(value, str):
+        return None
+    return value
+
+
+def _normalized_content_type(response: object) -> str | None:
+    value = _header_value(response, "Content-Type")
+    if value is None:
+        return None
+    return value.split(";", 1)[0].strip().lower()
+
+
+def _validate_video_content_type(response: object) -> None:
+    content_type = _normalized_content_type(response)
+    if content_type is None:
+        return
+    if content_type.startswith("video/"):
+        return
+    if content_type in {
+        "application/octet-stream",
+        "binary/octet-stream",
+        "application/mp4",
+        "application/x-mp4",
+    }:
+        return
+    raise UserFacingError(
+        f"Dropbox did not return a video file. Got Content-Type {content_type}."
+    )
+
+
+def _content_disposition_filename(response: object) -> str | None:
+    value = _header_value(response, "Content-Disposition")
+    if value is None:
+        return None
+    for part in value.split(";")[1:]:
+        item = part.strip()
+        lower = item.lower()
+        if lower.startswith("filename*="):
+            encoded = item.split("=", 1)[1].strip().strip('"')
+            if "''" in encoded:
+                _, encoded = encoded.split("''", 1)
+            return _safe_download_filename(unquote(encoded))
+        if lower.startswith("filename="):
+            return _safe_download_filename(item.split("=", 1)[1].strip().strip('"'))
+    return None
+
+
+def _safe_download_filename(value: str) -> str | None:
+    name = Path(value).name.strip()
+    if not name:
+        return None
+    return name
 
 
 def _select_rustdesk_deb_asset(release: dict[str, object], arch: str) -> dict[str, str]:

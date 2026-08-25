@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from io import BytesIO
 from pathlib import Path
 from unittest import mock
 
@@ -10,6 +11,19 @@ from pi_kiosk.linux import (
     _libinput_reports_touch,
     _select_rustdesk_deb_asset,
 )
+from pi_kiosk.host import VideoSource
+
+
+class FakeResponse(BytesIO):
+    def __init__(self, payload: bytes, headers: dict[str, str] | None = None) -> None:
+        super().__init__(payload)
+        self.headers = headers or {}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
 
 
 class LinuxHostTests(unittest.TestCase):
@@ -112,6 +126,124 @@ class LinuxHostTests(unittest.TestCase):
             ],
             check=True,
         )
+
+    def test_download_file_reports_percentage_progress_when_size_is_known(self):
+        host = LinuxHost()
+        progress: list[str] = []
+
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "demo.mp4"
+
+            with mock.patch(
+                "urllib.request.urlopen",
+                return_value=FakeResponse(
+                    b"x" * 16,
+                    headers={"Content-Length": "16"},
+                ),
+            ):
+                host._download_file(
+                    "https://example.com/demo.mp4",
+                    target,
+                    description="video file",
+                    progress=progress.append,
+                )
+
+            self.assertEqual(target.read_bytes(), b"x" * 16)
+
+        self.assertEqual(
+            progress,
+            [
+                "Downloading video file (0%)",
+                "Downloading video file (100%)",
+            ],
+        )
+
+    def test_deploy_video_rejects_html_content(self):
+        host = LinuxHost()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "home" / "pi"
+            home.mkdir(parents=True)
+
+            with mock.patch.object(host, "home", return_value=str(home)):
+                with mock.patch.object(host, "_own_within_home"):
+                    with mock.patch.object(host, "_own_tree"):
+                        with mock.patch(
+                            "urllib.request.urlopen",
+                            return_value=FakeResponse(
+                                b"<html>login</html>",
+                                headers={"Content-Type": "text/html"},
+                            ),
+                        ):
+                            with self.assertRaisesRegex(UserFacingError, "video file"):
+                                host.deploy_video(
+                                    VideoSource(
+                                        shared_url="https://www.dropbox.com/s/example/demo.mp4",
+                                        download_url="https://www.dropbox.com/s/example/demo.mp4?dl=1",
+                                    )
+                                )
+
+    def test_deploy_video_uses_content_disposition_filename(self):
+        host = LinuxHost()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "home" / "pi"
+            home.mkdir(parents=True)
+
+            with mock.patch.object(host, "home", return_value=str(home)):
+                with mock.patch.object(host, "_own_within_home"):
+                    with mock.patch.object(host, "_own_tree"):
+                        with mock.patch(
+                            "urllib.request.urlopen",
+                            return_value=FakeResponse(
+                                b"x" * 8,
+                                headers={
+                                    "Content-Type": "video/mp4",
+                                    "Content-Length": "8",
+                                    "Content-Disposition": 'attachment; filename="real-name.mp4"',
+                                },
+                            ),
+                        ):
+                            deployment = host.deploy_video(
+                                VideoSource(
+                                    shared_url="https://www.dropbox.com/s/example/demo.mp4",
+                                    download_url="https://www.dropbox.com/s/example/demo.mp4?dl=1",
+                                )
+                            )
+
+            self.assertEqual(deployment.file_name, "real-name.mp4")
+            self.assertEqual(
+                deployment.video_path,
+                str(home / ".local" / "share" / "pi-kiosk" / "video" / "current" / "real-name.mp4"),
+            )
+
+    def test_deploy_video_rejects_truncated_downloads(self):
+        host = LinuxHost()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "home" / "pi"
+            home.mkdir(parents=True)
+
+            with mock.patch.object(host, "home", return_value=str(home)):
+                with mock.patch.object(host, "_own_within_home"):
+                    with mock.patch.object(host, "_own_tree"):
+                        with mock.patch(
+                            "urllib.request.urlopen",
+                            return_value=FakeResponse(
+                                b"short",
+                                headers={
+                                    "Content-Type": "video/mp4",
+                                    "Content-Length": "10",
+                                },
+                            ),
+                        ):
+                            with self.assertRaisesRegex(UserFacingError, "incomplete"):
+                                host.deploy_video(
+                                    VideoSource(
+                                        shared_url="https://www.dropbox.com/s/example/demo.mp4",
+                                        download_url="https://www.dropbox.com/s/example/demo.mp4?dl=1",
+                                    )
+                                )
 
 
 if __name__ == "__main__":

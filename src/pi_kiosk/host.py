@@ -17,6 +17,18 @@ class WebAppSource:
 
 
 @dataclass(frozen=True)
+class VideoDeployment:
+    video_path: str
+    file_name: str
+
+
+@dataclass(frozen=True)
+class VideoSource:
+    shared_url: str
+    download_url: str
+
+
+@dataclass(frozen=True)
 class RustDeskInstall:
     rustdesk_id: str
     asset_name: str
@@ -54,7 +66,15 @@ class Host(Protocol):
         progress: Callable[[str], None] | None = None,
     ) -> WebAppDeployment: ...
 
+    def deploy_video(
+        self,
+        source: VideoSource,
+        progress: Callable[[str], None] | None = None,
+    ) -> VideoDeployment: ...
+
     def chromium_command(self) -> str | None: ...
+
+    def mpv_command(self) -> str | None: ...
 
     def wtype_command(self) -> str | None: ...
 
@@ -65,6 +85,8 @@ class Host(Protocol):
     def launch_kiosk_now(self, launcher: str) -> None: ...
 
     def launch_webapp_server_now(self, launcher: str) -> None: ...
+
+    def launch_video_now(self, launcher: str) -> None: ...
 
     def reboot(self) -> None: ...
 

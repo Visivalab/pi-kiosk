@@ -1,10 +1,10 @@
 from pi_kiosk.host import Host
 from pi_kiosk.steps.autologin import AutologinStep
 from pi_kiosk.steps.nosleep import NoSleepStep
+from pi_kiosk.steps.project_kiosk import ProjectKioskStep
 from pi_kiosk.steps.rotation import RotationStep
 from pi_kiosk.steps.rustdesk import RustDeskStep
 from pi_kiosk.steps.touch import TouchStep
-from pi_kiosk.steps.webapp_kiosk import WebAppKioskStep
 from pi_kiosk.ui import UI
 
 
@@ -23,7 +23,7 @@ def default_steps():
         NoSleepStep(),
         AutologinStep(),
         RustDeskStep(),
-        WebAppKioskStep(),
+        ProjectKioskStep(),
     )
 
 

@@ -1,7 +1,13 @@
 from dataclasses import dataclass
 from typing import Callable
 
-from pi_kiosk.host import RustDeskInstall, WebAppDeployment, WebAppSource
+from pi_kiosk.host import (
+    RustDeskInstall,
+    VideoDeployment,
+    VideoSource,
+    WebAppDeployment,
+    WebAppSource,
+)
 
 
 @dataclass
@@ -26,7 +32,9 @@ class FakeHost:
         root: bool = True,
         desktop_session_returncode: int = 0,
         deployed_webapp: WebAppDeployment | None = None,
+        deployed_video: VideoDeployment | None = None,
         chromium: str | None = "chromium-browser",
+        mpv: str | None = "/usr/bin/mpv",
         wtype: str | None = "/usr/bin/wtype",
         swayidle: str | None = "/usr/bin/swayidle",
         touchscreen: bool = False,
@@ -44,7 +52,12 @@ class FakeHost:
             app_dir=f"{home}/.local/share/pi-kiosk/webapp/current",
             artifact_dir="build",
         )
+        self.deployed_video = deployed_video or VideoDeployment(
+            video_path=f"{home}/.local/share/pi-kiosk/video/current/demo.mp4",
+            file_name="demo.mp4",
+        )
         self.chromium = chromium
+        self.mpv = mpv
         self.wtype = wtype
         self.swayidle = swayidle
         self.touchscreen = touchscreen
@@ -56,8 +69,11 @@ class FakeHost:
         self.desktop_session_commands: list[list[str]] = []
         self.webapp_deploy_requests: list[tuple[WebAppSource, tuple[str, ...]]] = []
         self.webapp_progress_messages: list[str] = []
+        self.video_deploy_requests: list[VideoSource] = []
+        self.video_progress_messages: list[str] = []
         self.launched_kiosk_paths: list[str] = []
         self.launched_server_paths: list[str] = []
+        self.launched_video_paths: list[str] = []
         self.rebooted = False
         self.rustdesk_progress_messages: list[str] = []
         self.rustdesk_passwords: list[str] = []
@@ -125,8 +141,28 @@ class FakeHost:
                 self.webapp_progress_messages.append(message)
         return self.deployed_webapp
 
+    def deploy_video(
+        self,
+        source: VideoSource,
+        progress: Callable[[str], None] | None = None,
+    ) -> VideoDeployment:
+        self.video_deploy_requests.append(source)
+        if progress is not None:
+            for message in (
+                "Preparing Dropbox download",
+                "Downloading video file (0%)",
+                "Downloading video file (100%)",
+                "Deploying video file",
+            ):
+                progress(message)
+                self.video_progress_messages.append(message)
+        return self.deployed_video
+
     def chromium_command(self) -> str | None:
         return self.chromium
+
+    def mpv_command(self) -> str | None:
+        return self.mpv
 
     def wtype_command(self) -> str | None:
         return self.wtype
@@ -136,6 +172,8 @@ class FakeHost:
 
     def ensure_packages_installed(self, packages: tuple[str, ...]) -> None:
         self.installed_packages.append(packages)
+        if "mpv" in packages and self.mpv is None:
+            self.mpv = "/usr/bin/mpv"
         if "wtype" in packages and self.wtype is None:
             self.wtype = "/usr/bin/wtype"
         if "swayidle" in packages and self.swayidle is None:
@@ -146,6 +184,9 @@ class FakeHost:
 
     def launch_webapp_server_now(self, launcher: str) -> None:
         self.launched_server_paths.append(launcher)
+
+    def launch_video_now(self, launcher: str) -> None:
+        self.launched_video_paths.append(launcher)
 
     def reboot(self) -> None:
         self.rebooted = True
