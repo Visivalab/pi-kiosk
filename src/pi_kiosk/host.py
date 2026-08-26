@@ -41,6 +41,8 @@ class Host(Protocol):
 
     def user(self) -> str: ...
 
+    def machine_name(self) -> str: ...
+
     def is_raspberry_pi(self) -> bool: ...
 
     def is_root(self) -> bool: ...
@@ -97,3 +99,13 @@ class Host(Protocol):
         password: str,
         progress: Callable[[str], None] | None = None,
     ) -> RustDeskInstall: ...
+
+    def register_totem(
+        self,
+        endpoint_url: str,
+        token: str,
+        machine_name: str,
+        totem_name: str,
+        description: str,
+        location: str,
+    ) -> None: ...

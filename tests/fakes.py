@@ -26,6 +26,7 @@ class FakeHost:
         *,
         home: str = "/home/pi",
         user: str = "pi",
+        machine_name: str = "pi-kiosk-01",
         files: dict[str, str] | None = None,
         wayland_output: str | None = "HDMI-A-1",
         raspberry_pi: bool = True,
@@ -42,6 +43,7 @@ class FakeHost:
     ) -> None:
         self.home_dir = home
         self.username = user
+        self.machine = machine_name
         self.files: dict[str, str] = dict(files or {})
         self.wayland_output = wayland_output
         self.raspberry_pi = raspberry_pi
@@ -79,12 +81,16 @@ class FakeHost:
         self.rustdesk_passwords: list[str] = []
         self.installed_packages: list[tuple[str, ...]] = []
         self.directories: set[str] = set()
+        self.totem_registration_requests: list[dict[str, str]] = []
 
     def home(self) -> str:
         return self.home_dir
 
     def user(self) -> str:
         return self.username
+
+    def machine_name(self) -> str:
+        return self.machine
 
     def is_raspberry_pi(self) -> bool:
         return self.raspberry_pi
@@ -210,3 +216,23 @@ class FakeHost:
                 progress(message)
                 self.rustdesk_progress_messages.append(message)
         return self.rustdesk_install
+
+    def register_totem(
+        self,
+        endpoint_url: str,
+        token: str,
+        machine_name: str,
+        totem_name: str,
+        description: str,
+        location: str,
+    ) -> None:
+        self.totem_registration_requests.append(
+            {
+                "endpoint_url": endpoint_url,
+                "token": token,
+                "machine_name": machine_name,
+                "totem_name": totem_name,
+                "description": description,
+                "location": location,
+            }
+        )

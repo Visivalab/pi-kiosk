@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from io import BytesIO
@@ -15,15 +16,24 @@ from pi_kiosk.host import VideoSource
 
 
 class FakeResponse(BytesIO):
-    def __init__(self, payload: bytes, headers: dict[str, str] | None = None) -> None:
+    def __init__(
+        self,
+        payload: bytes,
+        headers: dict[str, str] | None = None,
+        status: int = 200,
+    ) -> None:
         super().__init__(payload)
         self.headers = headers or {}
+        self.status = status
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc, tb):
         return False
+
+    def getcode(self) -> int:
+        return self.status
 
 
 class LinuxHostTests(unittest.TestCase):
@@ -245,6 +255,40 @@ class LinuxHostTests(unittest.TestCase):
                                     )
                                 )
 
+    def test_register_totem_posts_json_payload_with_machine_name(self):
+        host = LinuxHost()
+
+        with mock.patch("socket.gethostname", return_value="minipc-07"):
+            with mock.patch("pi_kiosk.linux._machine_id", return_value="machine-123"):
+                with mock.patch(
+                    "urllib.request.urlopen",
+                    return_value=FakeResponse(b"{}", status=201),
+                ) as urlopen:
+                    host.register_totem(
+                        "https://dashboard.example.com/register-new-totem",
+                        "totem-secret",
+                        "minipc-07",
+                        "Hall Screen",
+                        "Main entrance display",
+                        "Reception",
+                    )
+
+        request = urlopen.call_args.args[0]
+        self.assertEqual(request.full_url, "https://dashboard.example.com/register-new-totem")
+        self.assertEqual(request.get_method(), "POST")
+        self.assertEqual(request.get_header("Authorization"), "Bearer totem-secret")
+        self.assertEqual(request.headers["Content-type"], "application/json")
+        self.assertEqual(
+            json.loads(request.data.decode("utf-8")),
+            {
+                "machineName": "minipc-07",
+                "machineId": "machine-123",
+                "name": "Hall Screen",
+                "description": "Main entrance display",
+                "location": "Reception",
+                "registeredAt": mock.ANY,
+            },
+        )
 
 if __name__ == "__main__":
     unittest.main()

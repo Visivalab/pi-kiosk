@@ -1,5 +1,6 @@
 import io
 import unittest
+from unittest import mock
 
 from tests.fake_ui import FakeUI
 from tests.fakes import FakeHost
@@ -96,3 +97,112 @@ class CliTests(unittest.TestCase):
         )
         self.assertEqual(code, 130)
         self.assertEqual(stderr.getvalue(), "")
+
+    def test_register_totem_command_prompts_and_posts_registration(self):
+        host = FakeHost(machine_name="minipc-07")
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with mock.patch.dict(
+            "os.environ",
+            {
+                "PI_KIOSK_REGISTER_TOTEM_URL": "https://dashboard.example.com/register-new-totem",
+                "PI_KIOSK_REGISTER_TOTEM_TOKEN": "totem-secret",
+            },
+            clear=False,
+        ):
+            code = main(
+                argv=["register-totem"],
+                host=host,
+                ui=FakeUI(
+                    answers={
+                        "Totem name": "Hall Screen",
+                        "Totem description": "Main entrance display",
+                        "Totem location": "Reception",
+                    }
+                ),
+                stdout=stdout,
+                stderr=stderr,
+            )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr.getvalue(), "")
+        self.assertIn("registered", stdout.getvalue().lower())
+        self.assertEqual(
+            host.totem_registration_requests,
+            [
+                {
+                    "endpoint_url": "https://dashboard.example.com/register-new-totem",
+                    "token": "totem-secret",
+                    "machine_name": "minipc-07",
+                    "totem_name": "Hall Screen",
+                    "description": "Main entrance display",
+                    "location": "Reception",
+                }
+            ],
+        )
+
+    def test_register_totem_command_retries_empty_fields(self):
+        host = FakeHost(machine_name="minipc-07")
+        ui = FakeUI(
+            answers={
+                "Totem name": ["", "Hall Screen"],
+                "Totem description": ["", "Main entrance display"],
+                "Totem location": ["", "Reception"],
+            }
+        )
+
+        with mock.patch.dict(
+            "os.environ",
+            {
+                "PI_KIOSK_REGISTER_TOTEM_URL": "https://dashboard.example.com/register-new-totem",
+                "PI_KIOSK_REGISTER_TOTEM_TOKEN": "totem-secret",
+            },
+            clear=False,
+        ):
+            code = main(
+                argv=["register-totem"],
+                host=host,
+                ui=ui,
+                stdout=io.StringIO(),
+                stderr=io.StringIO(),
+            )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(
+            ui.prompts,
+            [
+                "Totem name",
+                "Totem name",
+                "Totem description",
+                "Totem description",
+                "Totem location",
+                "Totem location",
+            ],
+        )
+        self.assertEqual(
+            [message for message in ui.messages if message.startswith("WARN: ")],
+            [
+                "WARN: Totem name cannot be empty.",
+                "WARN: Totem description cannot be empty.",
+                "WARN: Totem location cannot be empty.",
+            ],
+        )
+
+    def test_register_totem_command_requires_config(self):
+        stderr = io.StringIO()
+        code = main(
+            argv=["register-totem"],
+            host=FakeHost(),
+            ui=FakeUI(
+                answers={
+                    "Totem name": "Hall Screen",
+                    "Totem description": "Main entrance display",
+                    "Totem location": "Reception",
+                }
+            ),
+            stdout=io.StringIO(),
+            stderr=stderr,
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("not configured", stderr.getvalue().lower())

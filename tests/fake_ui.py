@@ -18,7 +18,12 @@ class FakeUI:
     def prompt(self, prompt: str) -> str:
         self.prompts.append(prompt)
         if prompt in self.answers:
-            return self.answers[prompt]
+            answer = self.answers[prompt]
+            if isinstance(answer, list):
+                if not answer:
+                    raise AssertionError(f"no programmed answer for prompt: {prompt!r}")
+                return str(answer.pop(0))
+            return answer
         raise AssertionError(f"no programmed answer for prompt: {prompt!r}")
 
     def confirm(self, prompt: str, default: bool = True) -> bool:
@@ -35,7 +40,12 @@ class FakeUI:
     def secret(self, prompt: str) -> str:
         self.prompts.append(prompt)
         if prompt in self.answers:
-            return self.answers[prompt]
+            answer = self.answers[prompt]
+            if isinstance(answer, list):
+                if not answer:
+                    raise AssertionError(f"no programmed answer for prompt: {prompt!r}")
+                return str(answer.pop(0))
+            return answer
         raise AssertionError(f"no programmed answer for prompt: {prompt!r}")
 
     def info(self, message: str) -> None:

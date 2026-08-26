@@ -13,6 +13,10 @@ Or copy this folder to a Pi / clone it there, then:
 
     sudo ./kiosk.sh
 
+To run the standalone totem registration flow later:
+
+    PYTHONPATH=src python3 -m pi_kiosk register-totem
+
 It asks these interactive questions:
 
 1. Screen rotation
@@ -49,6 +53,27 @@ with Imager, boot normally, run the command.
      are available, re-hides the mouse cursor after idle
 
 The account password is not deleted. It is still used for SSH and sudo.
+
+## Standalone totem registration
+
+The installer does not register anything remotely. Use the separate command when
+you want to register the device in your dashboard/backend:
+
+    PYTHONPATH=src python3 -m pi_kiosk register-totem
+
+That command:
+
+- detects the machine name from the system hostname
+- asks for the totem name
+- asks for the totem description
+- asks for the totem location
+- sends a `POST` to your configured endpoint
+
+Configure the endpoint and token in [src/pi_kiosk/totem_registration.py](/mnt/c/Users/Nitropc/orca/pi-kiosk/src/pi_kiosk/totem_registration.py)
+or override them with:
+
+- `PI_KIOSK_REGISTER_TOTEM_URL`
+- `PI_KIOSK_REGISTER_TOTEM_TOKEN`
 
 ## What it will not do
 

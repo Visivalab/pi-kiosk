@@ -6,9 +6,11 @@ import os
 import pwd
 import shlex
 import shutil
+import socket
 import subprocess
 import tarfile
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 from urllib import error, request
@@ -45,6 +47,9 @@ class LinuxHost:
                 "Nothing was changed."
             )
         return getpass.getuser()
+
+    def machine_name(self) -> str:
+        return socket.gethostname()
 
     def is_raspberry_pi(self) -> bool:
         return looks_like_raspberry_pi(
@@ -313,6 +318,43 @@ class LinuxHost:
             asset_name=str(asset["name"]),
         )
 
+    def register_totem(
+        self,
+        endpoint_url: str,
+        token: str,
+        machine_name: str,
+        totem_name: str,
+        description: str,
+        location: str,
+    ) -> None:
+        payload = {
+            "machineName": machine_name,
+            "machineId": _machine_id(),
+            "name": totem_name,
+            "description": description,
+            "location": location,
+            "registeredAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        }
+        req = request.Request(
+            endpoint_url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with request.urlopen(req, timeout=5) as response:
+                status = response.getcode()
+        except error.HTTPError as exc:
+            raise UserFacingError(f"Totem registration failed with HTTP {exc.code}.") from exc
+        except error.URLError as exc:
+            raise UserFacingError(f"Totem registration failed: {exc.reason}.") from exc
+
+        if status < 200 or status >= 300:
+            raise UserFacingError(f"Totem registration failed with HTTP {status}.")
+
     def _own(self, path: Path) -> None:
         if not self.is_root():
             return
@@ -575,6 +617,14 @@ def _read_device_tree_model() -> str | None:
             continue
         return raw.split(b"\0", 1)[0].decode("utf-8", errors="replace")
     return None
+
+
+def _machine_id() -> str | None:
+    path = Path("/etc/machine-id")
+    if not path.is_file():
+        return None
+    value = path.read_text(encoding="utf-8").strip()
+    return value or None
 
 
 def _libinput_reports_touch(stdout: str) -> bool:
