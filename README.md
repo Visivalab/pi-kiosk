@@ -13,9 +13,13 @@ Or copy this folder to a Pi / clone it there, then:
 
     sudo ./kiosk.sh
 
-To run the standalone totem registration flow later:
+To run the standalone totem registration flow later from a checkout:
 
     PYTHONPATH=src python3 -m pi_kiosk register-totem
+
+Or directly from GitHub on the Pi:
+
+    curl -fsSL https://raw.githubusercontent.com/Visivalab/pi-kiosk/master/kiosk.sh | sudo bash -s -- register-totem
 
 It asks these interactive questions:
 
@@ -60,6 +64,10 @@ The installer does not register anything remotely. Use the separate command when
 you want to register the device in your dashboard/backend:
 
     PYTHONPATH=src python3 -m pi_kiosk register-totem
+
+If you are not inside a checkout on the Pi, use the pipeable form instead:
+
+    curl -fsSL https://raw.githubusercontent.com/Visivalab/pi-kiosk/master/kiosk.sh | sudo bash -s -- register-totem
 
 That command:
 

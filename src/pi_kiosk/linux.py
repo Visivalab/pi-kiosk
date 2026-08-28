@@ -348,13 +348,17 @@ class LinuxHost:
             with request.urlopen(req, timeout=5) as response:
                 status = response.getcode()
         except error.HTTPError as exc:
+            detail = _http_error_detail(exc)
+            if detail:
+                raise UserFacingError(
+                    f"Totem registration failed with HTTP {exc.code}: {detail}."
+                ) from exc
             raise UserFacingError(f"Totem registration failed with HTTP {exc.code}.") from exc
         except error.URLError as exc:
             raise UserFacingError(f"Totem registration failed: {exc.reason}.") from exc
 
         if status < 200 or status >= 300:
             raise UserFacingError(f"Totem registration failed with HTTP {status}.")
-
     def _own(self, path: Path) -> None:
         if not self.is_root():
             return
@@ -604,6 +608,41 @@ class LinuxHost:
         if not rustdesk_id:
             raise UserFacingError("RustDesk did not return an ID after installation.")
         return rustdesk_id
+
+
+def _http_error_detail(exc: error.HTTPError) -> str:
+    try:
+        payload = exc.read().decode("utf-8", errors="replace").strip()
+    except OSError:
+        return ""
+
+    if not payload:
+        return ""
+
+    try:
+        data = json.loads(payload)
+    except json.JSONDecodeError:
+        data = None
+
+    if isinstance(data, dict):
+        for key in ("message", "error", "detail"):
+            value = data.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip().rstrip(".")
+        errors = data.get("errors")
+        if isinstance(errors, list):
+            messages = [
+                item.strip().rstrip(".")
+                for item in errors
+                if isinstance(item, str) and item.strip()
+            ]
+            if messages:
+                return "; ".join(messages)
+
+    compact = " ".join(payload.split()).rstrip(".")
+    if len(compact) > 200:
+        return compact[:197] + "..."
+    return compact
 
 
 def _read_device_tree_model() -> str | None:

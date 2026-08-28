@@ -4,6 +4,7 @@ import unittest
 from io import BytesIO
 from pathlib import Path
 from unittest import mock
+from urllib import error
 
 from pi_kiosk.errors import UserFacingError
 from pi_kiosk.linux import (
@@ -289,6 +290,31 @@ class LinuxHostTests(unittest.TestCase):
                 "registeredAt": mock.ANY,
             },
         )
+
+    def test_register_totem_surfaces_backend_error_message(self):
+        host = LinuxHost()
+        http_error = error.HTTPError(
+            "https://dashboard.example.com/register-new-totem",
+            400,
+            "Bad Request",
+            hdrs=None,
+            fp=BytesIO(b'{"message":"Totem already exists"}'),
+        )
+
+        with mock.patch("pi_kiosk.linux._machine_id", return_value="machine-123"):
+            with mock.patch("urllib.request.urlopen", side_effect=http_error):
+                with self.assertRaisesRegex(
+                    UserFacingError,
+                    "HTTP 400: Totem already exists",
+                ):
+                    host.register_totem(
+                        "https://dashboard.example.com/register-new-totem",
+                        "totem-secret",
+                        "minipc-07",
+                        "Hall Screen",
+                        "Main entrance display",
+                        "Reception",
+                    )
 
 if __name__ == "__main__":
     unittest.main()
