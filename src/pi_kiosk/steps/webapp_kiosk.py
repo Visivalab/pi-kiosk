@@ -24,6 +24,8 @@ from pi_kiosk.ui import UI
 
 KIOSK_PORT = 8080
 CURSOR_IDLE_SECONDS = 5
+SERVER_READY_RETRIES = 50
+SERVER_READY_DELAY_SECONDS = 0.2
 _REPO_PROMPT = "GitHub repo"
 _REPO_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _HIDE_CURSOR_COMMAND = "-M alt -M logo -P h >/dev/null 2>&1 || true"
@@ -119,12 +121,14 @@ def launcher_script(browser: str, app_dir: str, wtype: str, swayidle: str) -> st
             '}',
             'trap cleanup EXIT',
             'server_ready=0',
-            "for _ in 1 2 3 4 5; do",
+            'attempt=0',
+            f'while [ "$server_ready" -eq 0 ] && [ "$attempt" -lt {SERVER_READY_RETRIES} ]; do',
             "  if python3 -c \"import socket, sys; sock = socket.socket(); sock.settimeout(0.2); code = sock.connect_ex(('127.0.0.1', 8080)); sock.close(); sys.exit(0 if code == 0 else 1)\" >/dev/null 2>&1; then",
             '    server_ready=1',
             "    break",
             "  fi",
-            "  sleep 0.2",
+            f"  sleep {SERVER_READY_DELAY_SECONDS}",
+            '  attempt=$((attempt + 1))',
             "done",
             'if [ "$server_ready" -eq 1 ]; then',
             f'  if [ -x {quoted_status_reporter} ] && [ -r {quoted_status_config} ]; then',
