@@ -59,7 +59,7 @@ with Imager, boot normally, run the command.
    - installs a labwc cursor-hide keybind and, when `wtype` and `swayidle`
      are available, re-hides the mouse cursor after idle
 
-The account password is not deleted. It is still used for SSH and sudo.
+The account password is not deleted. It is still used for sudo.
 
 ## Standalone totem registration
 

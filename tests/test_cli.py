@@ -146,10 +146,6 @@ class CliTests(unittest.TestCase):
                     "connection": TotemConnectionDetails(
                         rustdesk_id="123 456 789",
                         rustdesk_password=None,
-                        ssh_user="pi",
-                        ssh_port=22,
-                        ip_address="192.168.1.50",
-                        ip_addresses=("192.168.1.50",),
                     ),
                 }
             ],

@@ -277,10 +277,6 @@ class LinuxHostTests(unittest.TestCase):
                         TotemConnectionDetails(
                             rustdesk_id="987 654 321",
                             rustdesk_password="secret-pass",
-                            ssh_user="pi",
-                            ssh_port=2222,
-                            ip_address="192.168.1.50",
-                            ip_addresses=("192.168.1.50", "10.0.0.12"),
                         ),
                     )
 
@@ -301,10 +297,6 @@ class LinuxHostTests(unittest.TestCase):
                 "location": "Reception",
                 "rustdeskId": "987 654 321",
                 "rustdeskPassword": "secret-pass",
-                "sshUser": "pi",
-                "sshPort": 2222,
-                "ipAddress": "192.168.1.50",
-                "ipAddresses": ["192.168.1.50", "10.0.0.12"],
                 "registeredAt": mock.ANY,
             },
         )
@@ -336,10 +328,6 @@ class LinuxHostTests(unittest.TestCase):
                         TotemConnectionDetails(
                             rustdesk_id=None,
                             rustdesk_password=None,
-                            ssh_user="pi",
-                            ssh_port=22,
-                            ip_address=None,
-                            ip_addresses=(),
                         ),
                     )
 

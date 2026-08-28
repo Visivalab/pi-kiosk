@@ -20,4 +20,4 @@ class AutologinStepTests(unittest.TestCase):
     def test_report_says_the_account_password_still_exists(self):
         report = AutologinStep().apply(FakeHost())
         self.assertIn("password", report.lower())
-        self.assertIn("ssh", report.lower())
+        self.assertIn("sudo", report.lower())

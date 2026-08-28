@@ -47,10 +47,6 @@ class TotemStatusReporterConfig:
 class TotemConnectionDetails:
     rustdesk_id: str | None
     rustdesk_password: str | None
-    ssh_user: str
-    ssh_port: int
-    ip_address: str | None
-    ip_addresses: tuple[str, ...]
 
 
 class Host(Protocol):

@@ -229,10 +229,6 @@ class FakeHost:
         return TotemConnectionDetails(
             rustdesk_id=self.rustdesk_install.rustdesk_id,
             rustdesk_password=rustdesk_password,
-            ssh_user=self.username,
-            ssh_port=22,
-            ip_address="192.168.1.50",
-            ip_addresses=("192.168.1.50",),
         )
 
     def register_totem(

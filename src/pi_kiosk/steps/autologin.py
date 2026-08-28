@@ -15,5 +15,5 @@ class AutologinStep:
         return (
             "Done: desktop autologin is enabled. "
             "The machine will start the desktop without asking for a password. "
-            "The account password still exists for SSH and sudo."
+            "The account password still exists for sudo."
         )

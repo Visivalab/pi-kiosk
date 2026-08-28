@@ -334,14 +334,9 @@ class LinuxHost:
         self,
         rustdesk_password: str | None = None,
     ) -> TotemConnectionDetails:
-        ip_addresses = _ipv4_addresses()
         return TotemConnectionDetails(
             rustdesk_id=_rustdesk_id(),
             rustdesk_password=rustdesk_password,
-            ssh_user=self.user(),
-            ssh_port=_ssh_port(),
-            ip_address=ip_addresses[0] if ip_addresses else None,
-            ip_addresses=ip_addresses,
         )
 
     def register_totem(
@@ -365,10 +360,6 @@ class LinuxHost:
             "location": location,
             "rustdeskId": connection.rustdesk_id,
             "rustdeskPassword": connection.rustdesk_password,
-            "sshUser": connection.ssh_user,
-            "sshPort": connection.ssh_port,
-            "ipAddress": connection.ip_address,
-            "ipAddresses": list(connection.ip_addresses),
             "registeredAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
         req = request.Request(
@@ -724,81 +715,6 @@ def _rustdesk_id() -> str | None:
         return None
     value = result.stdout.strip()
     return value or None
-
-
-def _ssh_port() -> int:
-    try:
-        result = subprocess.run(
-            ["sshd", "-T"],
-            check=True,
-            text=True,
-            capture_output=True,
-        )
-    except (FileNotFoundError, subprocess.CalledProcessError):
-        return 22
-    for line in result.stdout.splitlines():
-        if line.startswith("port "):
-            _, _, value = line.partition(" ")
-            try:
-                return int(value.strip())
-            except ValueError:
-                return 22
-    return 22
-
-
-def _ipv4_addresses() -> tuple[str, ...]:
-    try:
-        result = subprocess.run(
-            ["ip", "-4", "-o", "addr", "show", "scope", "global"],
-            check=True,
-            text=True,
-            capture_output=True,
-        )
-    except (FileNotFoundError, subprocess.CalledProcessError):
-        return _fallback_ipv4_addresses()
-
-    addresses: list[str] = []
-    for line in result.stdout.splitlines():
-        parts = line.split()
-        if len(parts) < 4:
-            continue
-        cidr = parts[3]
-        address = cidr.split("/", 1)[0].strip()
-        if address and address not in addresses:
-            addresses.append(address)
-    if addresses:
-        return tuple(addresses)
-    return _fallback_ipv4_addresses()
-
-
-def _fallback_ipv4_addresses() -> tuple[str, ...]:
-    candidates: list[str] = []
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        try:
-            sock.connect(("8.8.8.8", 80))
-            value = sock.getsockname()[0].strip()
-            if value and not value.startswith("127."):
-                candidates.append(value)
-        finally:
-            sock.close()
-    except OSError:
-        pass
-
-    try:
-        for family, _type, _proto, _canonname, sockaddr in socket.getaddrinfo(
-            socket.gethostname(),
-            None,
-            socket.AF_INET,
-        ):
-            if family != socket.AF_INET:
-                continue
-            value = sockaddr[0].strip()
-            if value and not value.startswith("127.") and value not in candidates:
-                candidates.append(value)
-    except socket.gaierror:
-        pass
-    return tuple(candidates)
 
 
 def _read_device_tree_model() -> str | None:
