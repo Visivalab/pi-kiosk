@@ -26,6 +26,8 @@ KIOSK_PORT = 8080
 CURSOR_IDLE_SECONDS = 5
 SERVER_READY_RETRIES = 50
 SERVER_READY_DELAY_SECONDS = 0.2
+STARTUP_HEARTBEAT_RETRIES = 12
+STARTUP_HEARTBEAT_DELAY_SECONDS = 5
 _REPO_PROMPT = "GitHub repo"
 _REPO_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _HIDE_CURSOR_COMMAND = "-M alt -M logo -P h >/dev/null 2>&1 || true"
@@ -116,6 +118,7 @@ def launcher_script(browser: str, app_dir: str, wtype: str, swayidle: str) -> st
             'idle_pid=""',
             'status_reporter_pid=""',
             'mkdir -p "$LOG_ROOT"',
+            ': >>"$HEARTBEAT_LOG_FILE"',
             'cd "$APP_DIR"',
             f'python3 -m http.server {KIOSK_PORT} --bind 127.0.0.1 >"$LOG_FILE" 2>&1 &',
             'server_pid="$!"',
@@ -142,16 +145,26 @@ def launcher_script(browser: str, app_dir: str, wtype: str, swayidle: str) -> st
             'if [ "$server_ready" -eq 1 ]; then',
             f'  if [ -x {quoted_status_reporter} ] && [ -r {quoted_status_config} ]; then',
             '    (',
-            '      printf "[%s] startup heartbeat begin\\n" "$(date -Is)"',
-            f'      if {quoted_status_reporter} {quoted_status_config}; then',
-            '        printf "[%s] startup heartbeat ok\\n" "$(date -Is)"',
-            "      else",
+            '      heartbeat_attempt=1',
+            f'      while [ "$heartbeat_attempt" -le {STARTUP_HEARTBEAT_RETRIES} ]; do',
+            '        printf "[%s] startup heartbeat attempt %s begin\\n" "$(date -Is)" "$heartbeat_attempt"',
+            f'        if {quoted_status_reporter} {quoted_status_config}; then',
+            '          printf "[%s] startup heartbeat ok on attempt %s\\n" "$(date -Is)" "$heartbeat_attempt"',
+            '          exit 0',
+            "        fi",
             '        status="$?"',
-            '        printf "[%s] startup heartbeat failed with exit %s\\n" "$(date -Is)" "$status"',
-            '        exit "$status"',
-            "      fi",
+            '        printf "[%s] startup heartbeat attempt %s failed with exit %s\\n" "$(date -Is)" "$heartbeat_attempt" "$status"',
+            f'        if [ "$heartbeat_attempt" -lt {STARTUP_HEARTBEAT_RETRIES} ]; then',
+            f'          sleep {STARTUP_HEARTBEAT_DELAY_SECONDS}',
+            "        fi",
+            '        heartbeat_attempt=$((heartbeat_attempt + 1))',
+            "      done",
+            '      printf "[%s] startup heartbeat exhausted retries\\n" "$(date -Is)"',
+            '      exit "$status"',
             '    ) >>"$HEARTBEAT_LOG_FILE" 2>&1 &',
             '    status_reporter_pid="$!"',
+            "  else",
+            '    printf "[%s] startup heartbeat skipped: reporter script or config is missing\\n" "$(date -Is)" >>"$HEARTBEAT_LOG_FILE"',
             "  fi",
             "else",
             '  printf "[%s] startup heartbeat skipped: local server was not ready after waiting\\n" "$(date -Is)" >>"$HEARTBEAT_LOG_FILE"',
