@@ -74,7 +74,6 @@ class TotemRegistrar:
                 TotemStatusReporterConfig(
                     endpoint_url=status_endpoint_url,
                     token=config.token,
-                    machine_name=machine_name,
                     totem_id=machine_name,
                     desktop_user=host.user(),
                 )

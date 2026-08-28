@@ -80,6 +80,7 @@ That command:
 
 The hourly reporter sends:
 
+- `machineName`: the current system hostname at the moment the heartbeat is sent
 - `kiosk_running`: `true` when `labwc` is running for the desktop user
 - `webapp_running`: `true` when `127.0.0.1:8080` is answering
 

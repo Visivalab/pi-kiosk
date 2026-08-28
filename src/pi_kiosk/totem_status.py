@@ -52,7 +52,6 @@ def reporter_config_json(config: TotemStatusReporterConfig) -> str:
         {
             "endpointUrl": config.endpoint_url,
             "token": config.token,
-            "machineName": config.machine_name,
             "totemId": config.totem_id,
             "desktopUser": config.desktop_user,
             "port": STATUS_PORT,
@@ -106,6 +105,13 @@ def _facts(config: dict[str, object]) -> tuple[bool, bool]:
     return kiosk_running, webapp_running
 
 
+def _machine_name(config: dict[str, object]) -> str:
+    value = socket.gethostname().strip()
+    if value:
+        return value
+    return str(config["totemId"])
+
+
 def main(argv: list[str]) -> int:
     if len(argv) != 2:
         print("usage: totem-status.py <config-path>", file=sys.stderr)
@@ -115,7 +121,7 @@ def main(argv: list[str]) -> int:
     kiosk_running, webapp_running = _facts(config)
     payload = {
         "totem_id": config["totemId"],
-        "machineName": config["machineName"],
+        "machineName": _machine_name(config),
         "checkedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "kiosk_running": kiosk_running,
         "webapp_running": webapp_running,

@@ -182,7 +182,6 @@ class CliTests(unittest.TestCase):
         install = host.totem_status_reporter_installs[0]
         self.assertEqual(install.endpoint_url, "https://dashboard.example.com/totem-status")
         self.assertEqual(install.token, "totem-secret")
-        self.assertEqual(install.machine_name, "minipc-07")
         self.assertEqual(install.totem_id, "minipc-07")
         self.assertEqual(install.desktop_user, "kiosk")
 

@@ -38,7 +38,6 @@ class RustDeskInstall:
 class TotemStatusReporterConfig:
     endpoint_url: str
     token: str
-    machine_name: str
     totem_id: str
     desktop_user: str
 

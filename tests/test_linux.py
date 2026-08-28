@@ -322,7 +322,6 @@ class LinuxHostTests(unittest.TestCase):
         config = TotemStatusReporterConfig(
             endpoint_url="https://dashboard.example.com/totem-status",
             token="status-secret",
-            machine_name="minipc-07",
             totem_id="minipc-07",
             desktop_user="kiosk",
         )
@@ -350,12 +349,15 @@ class LinuxHostTests(unittest.TestCase):
                                     '"webapp_running": webapp_running',
                                     script.read_text(encoding="utf-8"),
                                 )
+                                self.assertIn(
+                                    "socket.gethostname().strip()",
+                                    script.read_text(encoding="utf-8"),
+                                )
                                 self.assertEqual(
                                     json.loads(status_config.read_text(encoding="utf-8")),
                                     {
                                         "endpointUrl": "https://dashboard.example.com/totem-status",
                                         "token": "status-secret",
-                                        "machineName": "minipc-07",
                                         "totemId": "minipc-07",
                                         "desktopUser": "kiosk",
                                         "port": 8080,
