@@ -43,6 +43,14 @@ def log_tail_command(home: str) -> str:
     return f"tail -f {shlex.quote(log_path(home))}"
 
 
+def heartbeat_log_path(home: str) -> str:
+    return f"{home}/.local/state/pi-kiosk/webapp-heartbeat.log"
+
+
+def heartbeat_log_tail_command(home: str) -> str:
+    return f"tail -f {shlex.quote(heartbeat_log_path(home))}"
+
+
 def normalize_source(value: str) -> WebAppSource:
     text = value.strip()
     if not text:
@@ -104,6 +112,7 @@ def launcher_script(browser: str, app_dir: str, wtype: str, swayidle: str) -> st
             'MODE="${1:-kiosk}"',
             'LOG_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/pi-kiosk"',
             'LOG_FILE="$LOG_ROOT/webapp-server.log"',
+            'HEARTBEAT_LOG_FILE="$LOG_ROOT/webapp-heartbeat.log"',
             'idle_pid=""',
             'status_reporter_pid=""',
             'mkdir -p "$LOG_ROOT"',
@@ -132,9 +141,20 @@ def launcher_script(browser: str, app_dir: str, wtype: str, swayidle: str) -> st
             "done",
             'if [ "$server_ready" -eq 1 ]; then',
             f'  if [ -x {quoted_status_reporter} ] && [ -r {quoted_status_config} ]; then',
-            f'    {quoted_status_reporter} {quoted_status_config} >/dev/null 2>&1 &',
+            '    (',
+            '      printf "[%s] startup heartbeat begin\\n" "$(date -Is)"',
+            f'      if {quoted_status_reporter} {quoted_status_config}; then',
+            '        printf "[%s] startup heartbeat ok\\n" "$(date -Is)"',
+            "      else",
+            '        status="$?"',
+            '        printf "[%s] startup heartbeat failed with exit %s\\n" "$(date -Is)" "$status"',
+            '        exit "$status"',
+            "      fi",
+            '    ) >>"$HEARTBEAT_LOG_FILE" 2>&1 &',
             '    status_reporter_pid="$!"',
             "  fi",
+            "else",
+            '  printf "[%s] startup heartbeat skipped: local server was not ready after waiting\\n" "$(date -Is)" >>"$HEARTBEAT_LOG_FILE"',
             "fi",
             'if [ "$MODE" = "server-only" ]; then',
             '  wait "$server_pid"',
@@ -203,7 +223,12 @@ class WebAppKioskStep:
         install_kiosk_autostart(host, launcher_path(home))
         install_cursor_keybind(host)
 
-        log_report = f"Attach a terminal to the server logs with: {log_tail_command(home)}."
+        log_report = (
+            "Attach a terminal to the server logs with: "
+            f"{log_tail_command(home)}. "
+            "Inspect startup heartbeat logs with: "
+            f"{heartbeat_log_tail_command(home)}."
+        )
         report = (
             f"Done: webapp kiosk deployed from {deployment.repo_ref} using "
             f"{deployment.artifact_dir}/. Chromium will start on the next graphical login."
@@ -224,7 +249,12 @@ class WebAppKioskStep:
 
     def perform_next_action(self, host: Host, action: str) -> str:
         home = host.home()
-        log_report = f"Attach a terminal to the server logs with: {log_tail_command(home)}."
+        log_report = (
+            "Attach a terminal to the server logs with: "
+            f"{log_tail_command(home)}. "
+            "Inspect startup heartbeat logs with: "
+            f"{heartbeat_log_tail_command(home)}."
+        )
         if action == SIMULATE_AUTORUN:
             host.launch_kiosk_now(launcher_path(home))
             return (

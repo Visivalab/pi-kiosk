@@ -10,6 +10,7 @@ from pi_kiosk.steps.webapp_kiosk import (
     NEXT_ACTION_CHOICES,
     NEXT_ACTION_PROMPT,
     action_url,
+    heartbeat_log_tail_command,
     log_tail_command,
     WebAppKioskStep,
     launcher_path,
@@ -92,6 +93,7 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
         self.assertEqual(host.desktop_session_commands, [])
         self.assertIn("simulated autorun", report.lower())
         self.assertIn(log_tail_command(host.home()), report)
+        self.assertIn(heartbeat_log_tail_command(host.home()), report)
 
     def test_reboots_when_user_chooses_production_option(self):
         host = FakeHost()
@@ -111,6 +113,7 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
         self.assertTrue(host.rebooted)
         self.assertIn("rebooting", report.lower())
         self.assertIn(log_tail_command(host.home()), report)
+        self.assertIn(heartbeat_log_tail_command(host.home()), report)
 
     def test_closes_without_launch_when_user_chooses_close_option(self):
         host = FakeHost()
@@ -130,6 +133,7 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
         self.assertFalse(host.rebooted)
         self.assertIn(f"is live on {action_url()}", report)
         self.assertIn(log_tail_command(host.home()), report)
+        self.assertIn(heartbeat_log_tail_command(host.home()), report)
 
     def test_deploys_build_and_writes_one_autostart_block(self):
         host = FakeHost(
@@ -159,6 +163,7 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
         launcher = host.files[launcher_path(host.home())]
         self.assertIn('MODE="${1:-kiosk}"', launcher)
         self.assertIn("python3 -m http.server 8080 --bind 127.0.0.1", launcher)
+        self.assertIn('HEARTBEAT_LOG_FILE="$LOG_ROOT/webapp-heartbeat.log"', launcher)
         self.assertIn('status_reporter_pid=""', launcher)
         self.assertIn('attempt=0', launcher)
         self.assertIn('while [ "$server_ready" -eq 0 ] && [ "$attempt" -lt 50 ]; do', launcher)
@@ -166,6 +171,10 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
         self.assertIn('attempt=$((attempt + 1))', launcher)
         self.assertIn('if [ "$server_ready" -eq 1 ]; then', launcher)
         self.assertIn("/usr/local/lib/pi-kiosk/totem-status.py /etc/pi-kiosk/totem-status.json", launcher)
+        self.assertIn('printf "[%s] startup heartbeat begin\\n" "$(date -Is)"', launcher)
+        self.assertIn('printf "[%s] startup heartbeat ok\\n" "$(date -Is)"', launcher)
+        self.assertIn('startup heartbeat failed with exit %s', launcher)
+        self.assertIn('startup heartbeat skipped: local server was not ready after waiting', launcher)
         self.assertIn('if [ "$MODE" = "server-only" ]; then', launcher)
         self.assertIn('  wait "$server_pid"', launcher)
         self.assertIn('idle_pid=""', launcher)
@@ -181,6 +190,7 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
         self.assertIn("http://127.0.0.1:8080", launcher)
         self.assertIn("/home/pi/.local/share/pi-kiosk/webapp/current", launcher)
         self.assertIn("build", report.lower())
+        self.assertIn(heartbeat_log_tail_command(host.home()), report)
         self.assertEqual(
             host.webapp_progress_messages,
             [
