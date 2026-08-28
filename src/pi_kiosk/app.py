@@ -23,7 +23,6 @@ def default_steps():
     project_step = ProjectKioskStep(prompt_for_next_action=False)
     register_step = RegisterTotemStep(
         project_step=project_step,
-        rustdesk_step=rustdesk_step,
     )
     return (
         RotationStep(),

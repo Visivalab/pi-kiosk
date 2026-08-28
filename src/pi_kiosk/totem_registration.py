@@ -16,7 +16,6 @@ TOTEM_TYPE_PROMPT = "Totem type"
 TOTEM_NAME_PROMPT = "Totem name"
 TOTEM_DESCRIPTION_PROMPT = "Totem description"
 TOTEM_LOCATION_PROMPT = "Totem location"
-RUSTDESK_PASSWORD_PROMPT = "RustDesk password for backend"
 TOTEM_TYPE_CHOICES = [
     Choice(id="webapp", label="Webapp"),
     Choice(id="video", label="Video"),
@@ -35,7 +34,6 @@ class TotemRegistrationRequest:
     totem_name: str
     description: str
     location: str
-    rustdesk_password: str | None = None
 
 
 def default_config() -> TotemRegistrationConfig | None:
@@ -61,41 +59,29 @@ class TotemRegistrar:
         ui: UI,
         *,
         totem_type: str | None = None,
-        rustdesk_password: str | None = None,
-        prompt_for_rustdesk_password: bool = True,
     ) -> TotemRegistrationRequest:
         resolved_totem_type = totem_type or ui.choose(TOTEM_TYPE_PROMPT, list(TOTEM_TYPE_CHOICES))
         resolved_totem_name = _ask_required(ui, TOTEM_NAME_PROMPT)
         resolved_description = _ask_optional(ui, TOTEM_DESCRIPTION_PROMPT)
         resolved_location = _ask_optional(ui, TOTEM_LOCATION_PROMPT)
-        if prompt_for_rustdesk_password:
-            resolved_rustdesk_password = _ask_required_secret(ui, RUSTDESK_PASSWORD_PROMPT)
-        else:
-            resolved_rustdesk_password = (rustdesk_password or "").strip()
-            if not resolved_rustdesk_password:
-                resolved_rustdesk_password = _ask_required_secret(ui, RUSTDESK_PASSWORD_PROMPT)
 
         return TotemRegistrationRequest(
             totem_type=resolved_totem_type,
             totem_name=resolved_totem_name,
             description=resolved_description,
             location=resolved_location,
-            rustdesk_password=resolved_rustdesk_password,
         )
 
     def register(self, host: Host, registration: TotemRegistrationRequest) -> str:
         config = self.config()
         if config is None:
             raise UserFacingError("Totem registration is not configured.")
-        rustdesk_password = (registration.rustdesk_password or "").strip()
-        if not rustdesk_password:
-            raise UserFacingError("RustDesk password for backend cannot be empty.")
 
         machine_name = host.machine_name().strip()
         if not machine_name:
             raise UserFacingError("Could not determine the machine name for this device.")
 
-        connection = host.connection_details(rustdesk_password)
+        connection = host.connection_details()
         host.register_totem(
             config.endpoint_url,
             config.token,
@@ -142,11 +128,3 @@ def _ask_required(ui: UI, prompt: str) -> str:
 
 def _ask_optional(ui: UI, prompt: str) -> str:
     return ui.prompt(prompt).strip()
-
-
-def _ask_required_secret(ui: UI, prompt: str) -> str:
-    while True:
-        value = ui.secret(prompt).strip()
-        if value:
-            return value
-        ui.warn(f"{prompt} cannot be empty.")

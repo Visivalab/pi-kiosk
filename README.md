@@ -79,7 +79,7 @@ That command:
 - asks for the totem name
 - asks for the totem description (optional)
 - asks for the totem location (optional)
-- asks for the RustDesk password used by the backend
+- reuses the RustDesk ID and unattended password already configured on the Pi, when available
 - sends a `POST` to your configured registration endpoint
 - installs an hourly systemd timer that reports raw runtime facts to the backend
 

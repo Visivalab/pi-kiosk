@@ -10,8 +10,9 @@ from pi_kiosk.cli import main
 from pi_kiosk.host import TotemConnectionDetails
 from pi_kiosk.linux import NeedSudoUser
 from pi_kiosk.steps.project_kiosk import NEXT_ACTION_PROMPT, TYPE_OF_PROJECT_PROMPT
+from pi_kiosk.steps.register_totem import REGISTER_TOTEM_PROMPT
 from pi_kiosk.terminal_ui import TerminalUI
-from pi_kiosk.totem_registration import RUSTDESK_PASSWORD_PROMPT, TOTEM_TYPE_PROMPT
+from pi_kiosk.totem_registration import TOTEM_TYPE_PROMPT
 
 
 class RootGuardTests(unittest.TestCase):
@@ -42,6 +43,7 @@ class CliTests(unittest.TestCase):
                     "RustDesk password": "secret-pass",
                     TYPE_OF_PROJECT_PROMPT: "webapp",
                     "GitHub repo": "Visivalab/demo-app",
+                    REGISTER_TOTEM_PROMPT: "no",
                     NEXT_ACTION_PROMPT: "close",
                 }
             ),
@@ -101,7 +103,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(stderr.getvalue(), "")
 
     def test_register_totem_command_prompts_and_posts_registration(self):
-        host = FakeHost(machine_name="minipc-07")
+        host = FakeHost(machine_name="minipc-07", saved_rustdesk_password="secret-pass")
         stdout = io.StringIO()
         stderr = io.StringIO()
 
@@ -122,7 +124,6 @@ class CliTests(unittest.TestCase):
                         "Totem name": "Hall Screen",
                         "Totem description": "Main entrance display",
                         "Totem location": "Reception",
-                        RUSTDESK_PASSWORD_PROMPT: "secret-pass",
                     }
                 ),
                 stdout=stdout,
@@ -150,11 +151,15 @@ class CliTests(unittest.TestCase):
                 }
             ],
         )
-        self.assertEqual(host.connection_details_requests, ["secret-pass"])
+        self.assertEqual(host.connection_details_requests, [None])
         self.assertEqual(len(host.totem_status_reporter_installs), 1)
 
     def test_register_totem_command_installs_hourly_status_reporter(self):
-        host = FakeHost(machine_name="minipc-07", user="kiosk")
+        host = FakeHost(
+            machine_name="minipc-07",
+            user="kiosk",
+            saved_rustdesk_password="secret-pass",
+        )
         stdout = io.StringIO()
         stderr = io.StringIO()
 
@@ -175,7 +180,6 @@ class CliTests(unittest.TestCase):
                         "Totem name": "Hall Screen",
                         "Totem description": "Main entrance display",
                         "Totem location": "Reception",
-                        RUSTDESK_PASSWORD_PROMPT: "secret-pass",
                     }
                 ),
                 stdout=stdout,
@@ -197,7 +201,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(install.totem_id, "minipc-07")
         self.assertEqual(install.totem_type, "webapp")
         self.assertEqual(install.desktop_user, "kiosk")
-        self.assertEqual(host.connection_details_requests, ["secret-pass"])
+        self.assertEqual(host.connection_details_requests, [None])
 
     def test_register_totem_command_succeeds_when_first_status_run_fails(self):
         class HostWithStatusWarning(FakeHost):
@@ -211,7 +215,11 @@ class CliTests(unittest.TestCase):
                     "The timer remains enabled."
                 )
 
-        host = HostWithStatusWarning(machine_name="minipc-07", user="kiosk")
+        host = HostWithStatusWarning(
+            machine_name="minipc-07",
+            user="kiosk",
+            saved_rustdesk_password="secret-pass",
+        )
         stdout = io.StringIO()
         stderr = io.StringIO()
 
@@ -232,7 +240,6 @@ class CliTests(unittest.TestCase):
                         "Totem name": "Hall Screen",
                         "Totem description": "Main entrance display",
                         "Totem location": "Reception",
-                        RUSTDESK_PASSWORD_PROMPT: "secret-pass",
                     }
                 ),
                 stdout=stdout,
@@ -252,7 +259,6 @@ class CliTests(unittest.TestCase):
                 "Totem name": "Hall Screen",
                 "Totem description": "",
                 "Totem location": "",
-                RUSTDESK_PASSWORD_PROMPT: "secret-pass",
             }
         )
 
@@ -280,7 +286,6 @@ class CliTests(unittest.TestCase):
                 "Totem name",
                 "Totem description",
                 "Totem location",
-                RUSTDESK_PASSWORD_PROMPT,
             ],
         )
         self.assertEqual(
@@ -298,7 +303,6 @@ class CliTests(unittest.TestCase):
                 "Totem name": ["", "Hall Screen"],
                 "Totem description": "",
                 "Totem location": "",
-                RUSTDESK_PASSWORD_PROMPT: ["", "secret-pass"],
             }
         )
 
@@ -327,15 +331,12 @@ class CliTests(unittest.TestCase):
                 "Totem name",
                 "Totem description",
                 "Totem location",
-                RUSTDESK_PASSWORD_PROMPT,
-                RUSTDESK_PASSWORD_PROMPT,
             ],
         )
         self.assertEqual(
             [message for message in ui.messages if message.startswith("WARN: ")],
             [
                 "WARN: Totem name cannot be empty.",
-                "WARN: RustDesk password for backend cannot be empty.",
             ],
         )
 

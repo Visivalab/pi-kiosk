@@ -96,6 +96,63 @@ class LinuxHostTests(unittest.TestCase):
         with self.assertRaises(UserFacingError):
             _select_rustdesk_deb_asset({"assets": []}, "mips")
 
+    def test_install_rustdesk_persists_password_for_later_registration(self):
+        host = LinuxHost()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            saved_password_path = Path(tmp) / "etc" / "pi-kiosk" / "rustdesk.json"
+
+            with mock.patch.object(
+                host,
+                "_read_json",
+                return_value={
+                    "assets": [
+                        {
+                            "name": "rustdesk-1.4.3-aarch64.deb",
+                            "browser_download_url": "https://example.com/rustdesk.deb",
+                        }
+                    ]
+                },
+            ):
+                with mock.patch.object(host, "_debian_architecture", return_value="arm64"):
+                    with mock.patch.object(host, "_download_file"):
+                        with mock.patch.object(host, "_restart_rustdesk_service"):
+                            with mock.patch.object(host, "_rustdesk_get_id", return_value="987 654 321"):
+                                with mock.patch("pi_kiosk.linux.RUSTDESK_CREDENTIALS_PATH", saved_password_path):
+                                    with mock.patch("subprocess.run") as run:
+                                        host.install_rustdesk("secret-pass")
+
+            self.assertEqual(
+                json.loads(saved_password_path.read_text(encoding="utf-8")),
+                {"password": "secret-pass"},
+            )
+            self.assertEqual(saved_password_path.stat().st_mode & 0o777, 0o600)
+            run.assert_any_call(
+                ["rustdesk", "--password", "secret-pass"],
+                check=True,
+                text=True,
+            )
+
+    def test_connection_details_uses_saved_rustdesk_password_when_not_provided(self):
+        host = LinuxHost()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            saved_password_path = Path(tmp) / "etc" / "pi-kiosk" / "rustdesk.json"
+            saved_password_path.parent.mkdir(parents=True, exist_ok=True)
+            saved_password_path.write_text('{"password": "secret-pass"}', encoding="utf-8")
+
+            with mock.patch("pi_kiosk.linux.RUSTDESK_CREDENTIALS_PATH", saved_password_path):
+                with mock.patch("pi_kiosk.linux._rustdesk_id", return_value="987 654 321"):
+                    connection = host.connection_details()
+
+        self.assertEqual(
+            connection,
+            TotemConnectionDetails(
+                rustdesk_id="987 654 321",
+                rustdesk_password="secret-pass",
+            ),
+        )
+
     def test_installs_missing_cursor_packages_with_apt(self):
         host = LinuxHost()
 

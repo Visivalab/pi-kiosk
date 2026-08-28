@@ -4,10 +4,10 @@ from tests.fake_ui import FakeUI
 from tests.fakes import FakeHost
 
 from pi_kiosk.app import NotARaspberryPi, Wizard
-from pi_kiosk.host import WebAppSource
+from pi_kiosk.host import TotemConnectionDetails, WebAppSource
 from pi_kiosk.steps.kiosk_common import NEXT_ACTION_PROMPT
 from pi_kiosk.steps.project_kiosk import ProjectKioskStep, TYPE_OF_PROJECT_PROMPT
-from pi_kiosk.steps.register_totem import REGISTER_TOTEM_PROMPT
+from pi_kiosk.steps.register_totem import REGISTER_TOTEM_PROMPT, RegisterTotemStep
 from pi_kiosk.steps.rotation import RotationStep
 from pi_kiosk.steps.rustdesk import RustDeskStep
 
@@ -95,8 +95,57 @@ class WizardTests(unittest.TestCase):
         self.assertEqual(host.commands, [])
         self.assertEqual(host.files, {})
 
+    def test_register_now_reuses_the_password_set_during_rustdesk_install(self):
+        host = FakeHost(machine_name="pi-kiosk-01")
+        ui = FakeUI(
+            answers={
+                "Screen rotation": "none",
+                "RustDesk password": "secret-pass",
+                TYPE_OF_PROJECT_PROMPT: "webapp",
+                "GitHub repo": "Visivalab/demo-app",
+                REGISTER_TOTEM_PROMPT: "yes",
+                "Totem name": "Hall Screen",
+                "Totem description": "",
+                "Totem location": "",
+                NEXT_ACTION_PROMPT: "close",
+            }
+        )
+
+        Wizard(host, ui).run()
+
+        self.assertEqual(
+            host.totem_registration_requests[0]["connection"],
+            TotemConnectionDetails(
+                rustdesk_id="123 456 789",
+                rustdesk_password="secret-pass",
+            ),
+        )
+        self.assertNotIn("RustDesk password for backend", ui.prompts)
+
     def test_rotation_step_is_the_only_question(self):
         self.assertEqual(
             Wizard.question_step_ids(),
             [RotationStep.id, RustDeskStep.id, ProjectKioskStep.id, "register-totem", "next-action"],
+        )
+
+
+class RegisterTotemStepTests(unittest.TestCase):
+    def test_register_prompt_defaults_to_yes(self):
+        class RecordingUI(FakeUI):
+            def __init__(self) -> None:
+                super().__init__()
+                self.confirm_calls: list[tuple[str, bool]] = []
+
+            def confirm(self, prompt: str, default: bool = True) -> bool:
+                self.confirm_calls.append((prompt, default))
+                return False
+
+        ui = RecordingUI()
+
+        answer = RegisterTotemStep().ask(ui)
+
+        self.assertIsNone(answer)
+        self.assertEqual(
+            ui.confirm_calls,
+            [(REGISTER_TOTEM_PROMPT, True)],
         )

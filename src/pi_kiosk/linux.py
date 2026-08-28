@@ -43,6 +43,9 @@ class NeedSudoUser(RuntimeError):
     """The tool must know which desktop user's home to modify."""
 
 
+RUSTDESK_CREDENTIALS_PATH = Path("/etc/pi-kiosk/rustdesk.json")
+
+
 class LinuxHost:
     """Talks to the real machine. Keep this thin; logic lives in the steps."""
 
@@ -323,6 +326,7 @@ class LinuxHost:
         self._restart_rustdesk_service()
         rustdesk_id = self._rustdesk_get_id()
         subprocess.run(["rustdesk", "--password", password], check=True, text=True)
+        _save_rustdesk_password(password)
         self._restart_rustdesk_service()
 
         return RustDeskInstall(
@@ -336,7 +340,11 @@ class LinuxHost:
     ) -> TotemConnectionDetails:
         return TotemConnectionDetails(
             rustdesk_id=_rustdesk_id(),
-            rustdesk_password=rustdesk_password,
+            rustdesk_password=(
+                rustdesk_password
+                if rustdesk_password is not None
+                else _saved_rustdesk_password()
+            ),
         )
 
     def register_totem(
@@ -714,6 +722,31 @@ def _rustdesk_id() -> str | None:
     except (FileNotFoundError, subprocess.CalledProcessError):
         return None
     value = result.stdout.strip()
+    return value or None
+
+
+def _save_rustdesk_password(password: str) -> None:
+    RUSTDESK_CREDENTIALS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    RUSTDESK_CREDENTIALS_PATH.write_text(
+        json.dumps({"password": password}),
+        encoding="utf-8",
+    )
+    RUSTDESK_CREDENTIALS_PATH.chmod(0o600)
+
+
+def _saved_rustdesk_password() -> str | None:
+    if not RUSTDESK_CREDENTIALS_PATH.is_file():
+        return None
+    try:
+        data = json.loads(RUSTDESK_CREDENTIALS_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    value = data.get("password")
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
     return value or None
 
 

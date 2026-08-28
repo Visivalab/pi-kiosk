@@ -42,6 +42,7 @@ class FakeHost:
         swayidle: str | None = "/usr/bin/swayidle",
         touchscreen: bool = False,
         rustdesk_install: RustDeskInstall | None = None,
+        saved_rustdesk_password: str | None = None,
     ) -> None:
         self.home_dir = home
         self.username = user
@@ -69,6 +70,7 @@ class FakeHost:
             rustdesk_id="123 456 789",
             asset_name="rustdesk-1.4.3-aarch64.deb",
         )
+        self.saved_rustdesk_password = saved_rustdesk_password
         self.commands: list[list[str]] = []
         self.desktop_session_commands: list[list[str]] = []
         self.webapp_deploy_requests: list[tuple[WebAppSource, tuple[str, ...]]] = []
@@ -210,6 +212,7 @@ class FakeHost:
         progress: Callable[[str], None] | None = None,
     ) -> RustDeskInstall:
         self.rustdesk_passwords.append(password)
+        self.saved_rustdesk_password = password
         if progress is not None:
             for message in (
                 "Resolving latest RustDesk release",
@@ -228,7 +231,9 @@ class FakeHost:
         self.connection_details_requests.append(rustdesk_password)
         return TotemConnectionDetails(
             rustdesk_id=self.rustdesk_install.rustdesk_id,
-            rustdesk_password=rustdesk_password,
+            rustdesk_password=rustdesk_password
+            if rustdesk_password is not None
+            else self.saved_rustdesk_password,
         )
 
     def register_totem(
