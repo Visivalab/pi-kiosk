@@ -328,6 +328,7 @@ class LinuxHost:
         location: str,
     ) -> None:
         payload = {
+            "totem_id": machine_name,
             "machineName": machine_name,
             "machineId": _machine_id(),
             "name": totem_name,

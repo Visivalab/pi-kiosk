@@ -282,6 +282,7 @@ class LinuxHostTests(unittest.TestCase):
         self.assertEqual(
             json.loads(request.data.decode("utf-8")),
             {
+                "totem_id": "minipc-07",
                 "machineName": "minipc-07",
                 "machineId": "machine-123",
                 "name": "Hall Screen",
