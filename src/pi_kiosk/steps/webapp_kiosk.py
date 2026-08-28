@@ -19,6 +19,7 @@ from pi_kiosk.steps.kiosk_common import (
     install_cursor_keybind,
     install_kiosk_autostart,
 )
+from pi_kiosk.totem_status import status_config_path, status_script_path
 from pi_kiosk.ui import UI
 
 KIOSK_PORT = 8080
@@ -85,6 +86,8 @@ def launcher_script(browser: str, app_dir: str, wtype: str, swayidle: str) -> st
     quoted_browser = shlex.quote(browser)
     quoted_wtype = shlex.quote(wtype)
     quoted_swayidle = shlex.quote(swayidle)
+    quoted_status_reporter = shlex.quote(str(status_script_path()))
+    quoted_status_config = shlex.quote(str(status_config_path()))
     url = f"http://127.0.0.1:{KIOSK_PORT}"
     idle_command = (
         f"{quoted_swayidle} timeout {CURSOR_IDLE_SECONDS} "
@@ -100,6 +103,7 @@ def launcher_script(browser: str, app_dir: str, wtype: str, swayidle: str) -> st
             'LOG_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/pi-kiosk"',
             'LOG_FILE="$LOG_ROOT/webapp-server.log"',
             'idle_pid=""',
+            'status_reporter_pid=""',
             'mkdir -p "$LOG_ROOT"',
             'cd "$APP_DIR"',
             f'python3 -m http.server {KIOSK_PORT} --bind 127.0.0.1 >"$LOG_FILE" 2>&1 &',
@@ -109,14 +113,25 @@ def launcher_script(browser: str, app_dir: str, wtype: str, swayidle: str) -> st
             '  if [ -n "$idle_pid" ]; then',
             '    kill "$idle_pid" >/dev/null 2>&1 || true',
             '  fi',
+            '  if [ -n "$status_reporter_pid" ]; then',
+            '    wait "$status_reporter_pid" >/dev/null 2>&1 || true',
+            '  fi',
             '}',
             'trap cleanup EXIT',
+            'server_ready=0',
             "for _ in 1 2 3 4 5; do",
             "  if python3 -c \"import socket, sys; sock = socket.socket(); sock.settimeout(0.2); code = sock.connect_ex(('127.0.0.1', 8080)); sock.close(); sys.exit(0 if code == 0 else 1)\" >/dev/null 2>&1; then",
+            '    server_ready=1',
             "    break",
             "  fi",
             "  sleep 0.2",
             "done",
+            'if [ "$server_ready" -eq 1 ]; then',
+            f'  if [ -x {quoted_status_reporter} ] && [ -r {quoted_status_config} ]; then',
+            f'    {quoted_status_reporter} {quoted_status_config} >/dev/null 2>&1 &',
+            '    status_reporter_pid="$!"',
+            "  fi",
+            "fi",
             'if [ "$MODE" = "server-only" ]; then',
             '  wait "$server_pid"',
             "  exit 0",
