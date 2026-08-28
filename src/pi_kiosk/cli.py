@@ -65,6 +65,8 @@ def _run_command(
                 "This tool only configures Raspberry Pi OS. "
                 "Nothing was changed on this machine."
             )
+        if registrar.config() is None:
+            raise UserFacingError("Totem registration is not configured.")
         registration = registrar.ask(ui)
         report = registrar.register(host, registration)
     except KeyboardInterrupt:

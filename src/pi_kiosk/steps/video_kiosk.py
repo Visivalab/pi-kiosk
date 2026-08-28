@@ -82,9 +82,10 @@ class VideoKioskStep:
     choices = ()
     interactive = True
 
-    def __init__(self) -> None:
+    def __init__(self, *, prompt_for_next_action: bool = True) -> None:
         self._progress = None
         self._choose: Callable[[str, list[object]], str] | None = None
+        self._prompt_for_next_action = prompt_for_next_action
 
     def ask(self, ui: UI) -> VideoSource:
         self._progress = ui.progress
@@ -116,19 +117,28 @@ class VideoKioskStep:
         )
         install_kiosk_autostart(host, launcher_path(home))
 
-        next_action = CLOSE
-        if self._choose is not None:
-            next_action = self._choose(VIDEO_NEXT_ACTION_PROMPT, VIDEO_NEXT_ACTION_CHOICES)
-
-        action_report = "Doing nothing now."
-        if next_action == SIMULATE_AUTORUN:
-            host.launch_video_now(launcher_path(home))
-            action_report = "Launching video now for testing."
-        elif next_action == REBOOT:
-            host.reboot()
-            action_report = "Rebooting now for the final production startup."
-
-        return (
+        report = (
             f"Done: video kiosk deployed with {deployment.file_name}. "
-            f"mpv will start on the next graphical login. {action_report}"
+            "mpv will start on the next graphical login."
         )
+        if self._prompt_for_next_action:
+            next_action = CLOSE
+            if self._choose is not None:
+                next_action = self._choose(VIDEO_NEXT_ACTION_PROMPT, VIDEO_NEXT_ACTION_CHOICES)
+            report = f"{report} {self.perform_next_action(host, next_action)}"
+        return report
+
+    def next_action_prompt(self) -> str:
+        return VIDEO_NEXT_ACTION_PROMPT
+
+    def next_action_choices(self) -> list[Choice]:
+        return list(VIDEO_NEXT_ACTION_CHOICES)
+
+    def perform_next_action(self, host: Host, action: str) -> str:
+        if action == SIMULATE_AUTORUN:
+            host.launch_video_now(launcher_path(host.home()))
+            return "Done: launching video now for testing."
+        if action == REBOOT:
+            host.reboot()
+            return "Done: rebooting now for the final production startup."
+        return "Done: doing nothing now."

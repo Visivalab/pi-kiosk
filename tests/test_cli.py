@@ -7,9 +7,11 @@ from tests.fakes import FakeHost
 
 from pi_kiosk.app import NeedRoot, Wizard
 from pi_kiosk.cli import main
+from pi_kiosk.host import TotemConnectionDetails
 from pi_kiosk.linux import NeedSudoUser
 from pi_kiosk.steps.project_kiosk import NEXT_ACTION_PROMPT, TYPE_OF_PROJECT_PROMPT
 from pi_kiosk.terminal_ui import TerminalUI
+from pi_kiosk.totem_registration import RUSTDESK_PASSWORD_PROMPT, TOTEM_TYPE_PROMPT
 
 
 class RootGuardTests(unittest.TestCase):
@@ -116,9 +118,11 @@ class CliTests(unittest.TestCase):
                 host=host,
                 ui=FakeUI(
                     answers={
+                        TOTEM_TYPE_PROMPT: "webapp",
                         "Totem name": "Hall Screen",
                         "Totem description": "Main entrance display",
                         "Totem location": "Reception",
+                        RUSTDESK_PASSWORD_PROMPT: "",
                     }
                 ),
                 stdout=stdout,
@@ -135,12 +139,22 @@ class CliTests(unittest.TestCase):
                     "endpoint_url": "https://dashboard.example.com/register-new-totem",
                     "token": "totem-secret",
                     "machine_name": "minipc-07",
+                    "totem_type": "webapp",
                     "totem_name": "Hall Screen",
                     "description": "Main entrance display",
                     "location": "Reception",
+                    "connection": TotemConnectionDetails(
+                        rustdesk_id="123 456 789",
+                        rustdesk_password=None,
+                        ssh_user="pi",
+                        ssh_port=22,
+                        ip_address="192.168.1.50",
+                        ip_addresses=("192.168.1.50",),
+                    ),
                 }
             ],
         )
+        self.assertEqual(host.connection_details_requests, [None])
         self.assertEqual(len(host.totem_status_reporter_installs), 1)
 
     def test_register_totem_command_installs_hourly_status_reporter(self):
@@ -161,9 +175,11 @@ class CliTests(unittest.TestCase):
                 host=host,
                 ui=FakeUI(
                     answers={
+                        TOTEM_TYPE_PROMPT: "webapp",
                         "Totem name": "Hall Screen",
                         "Totem description": "Main entrance display",
                         "Totem location": "Reception",
+                        RUSTDESK_PASSWORD_PROMPT: "secret-pass",
                     }
                 ),
                 stdout=stdout,
@@ -183,15 +199,64 @@ class CliTests(unittest.TestCase):
         self.assertEqual(install.endpoint_url, "https://dashboard.example.com/totem-status")
         self.assertEqual(install.token, "totem-secret")
         self.assertEqual(install.totem_id, "minipc-07")
+        self.assertEqual(install.totem_type, "webapp")
         self.assertEqual(install.desktop_user, "kiosk")
+        self.assertEqual(host.connection_details_requests, ["secret-pass"])
+
+    def test_register_totem_command_succeeds_when_first_status_run_fails(self):
+        class HostWithStatusWarning(FakeHost):
+            def install_totem_status_reporter(
+                self,
+                config,
+            ) -> str | None:
+                super().install_totem_status_reporter(config)
+                return (
+                    "Hourly status reporter was installed, but the first status run failed. "
+                    "The timer remains enabled."
+                )
+
+        host = HostWithStatusWarning(machine_name="minipc-07", user="kiosk")
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with mock.patch.dict(
+            "os.environ",
+            {
+                "PI_KIOSK_REGISTER_TOTEM_URL": "https://dashboard.example.com/register-new-totem",
+                "PI_KIOSK_REGISTER_TOTEM_TOKEN": "totem-secret",
+            },
+            clear=False,
+        ):
+            code = main(
+                argv=["register-totem"],
+                host=host,
+                ui=FakeUI(
+                    answers={
+                        TOTEM_TYPE_PROMPT: "webapp",
+                        "Totem name": "Hall Screen",
+                        "Totem description": "Main entrance display",
+                        "Totem location": "Reception",
+                        RUSTDESK_PASSWORD_PROMPT: "",
+                    }
+                ),
+                stdout=stdout,
+                stderr=stderr,
+            )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr.getvalue(), "")
+        self.assertIn("totem registered for machine minipc-07", stdout.getvalue().lower())
+        self.assertIn("first status run failed", stdout.getvalue().lower())
 
     def test_register_totem_command_retries_empty_fields(self):
         host = FakeHost(machine_name="minipc-07")
         ui = FakeUI(
             answers={
+                TOTEM_TYPE_PROMPT: "video",
                 "Totem name": ["", "Hall Screen"],
                 "Totem description": ["", "Main entrance display"],
                 "Totem location": ["", "Reception"],
+                RUSTDESK_PASSWORD_PROMPT: "",
             }
         )
 
@@ -215,12 +280,14 @@ class CliTests(unittest.TestCase):
         self.assertEqual(
             ui.prompts,
             [
+                TOTEM_TYPE_PROMPT,
                 "Totem name",
                 "Totem name",
                 "Totem description",
                 "Totem description",
                 "Totem location",
                 "Totem location",
+                RUSTDESK_PASSWORD_PROMPT,
             ],
         )
         self.assertEqual(
@@ -234,6 +301,14 @@ class CliTests(unittest.TestCase):
 
     def test_register_totem_command_requires_config(self):
         stderr = io.StringIO()
+        ui = FakeUI(
+            answers={
+                TOTEM_TYPE_PROMPT: "webapp",
+                "Totem name": "Hall Screen",
+                "Totem description": "Main entrance display",
+                "Totem location": "Reception",
+            }
+        )
         with mock.patch.dict(
             "os.environ",
             {
@@ -245,15 +320,10 @@ class CliTests(unittest.TestCase):
             code = main(
                 argv=["register-totem"],
                 host=FakeHost(),
-                ui=FakeUI(
-                    answers={
-                        "Totem name": "Hall Screen",
-                        "Totem description": "Main entrance display",
-                        "Totem location": "Reception",
-                    }
-                ),
+                ui=ui,
                 stdout=io.StringIO(),
                 stderr=stderr,
             )
         self.assertEqual(code, 1)
         self.assertIn("not configured", stderr.getvalue().lower())
+        self.assertEqual(ui.prompts, [])

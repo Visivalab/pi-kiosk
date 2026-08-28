@@ -14,12 +14,14 @@ class RustDeskStep:
 
     def __init__(self) -> None:
         self._progress: Callable[[str], None] | None = None
+        self._last_password: str | None = None
 
     def ask(self, ui: UI) -> str:
         self._progress = ui.progress
         while True:
             password = ui.secret(self.title).strip()
             if password:
+                self._last_password = password
                 return password
             ui.warn("RustDesk password cannot be empty.")
 
@@ -30,3 +32,6 @@ class RustDeskStep:
             "Done: RustDesk installed and configured. "
             f"ID: {install.rustdesk_id}"
         )
+
+    def last_password(self) -> str | None:
+        return self._last_password

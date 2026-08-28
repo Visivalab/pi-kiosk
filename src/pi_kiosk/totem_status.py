@@ -53,6 +53,7 @@ def reporter_config_json(config: TotemStatusReporterConfig) -> str:
             "endpointUrl": config.endpoint_url,
             "token": config.token,
             "totemId": config.totem_id,
+            "totemType": config.totem_type,
             "desktopUser": config.desktop_user,
             "port": STATUS_PORT,
         },
@@ -121,6 +122,7 @@ def main(argv: list[str]) -> int:
     kiosk_running, webapp_running = _facts(config)
     payload = {
         "totem_id": config["totemId"],
+        "totem_type": config["totemType"],
         "machineName": _machine_name(config),
         "checkedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "kiosk_running": kiosk_running,

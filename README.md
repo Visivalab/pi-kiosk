@@ -25,8 +25,11 @@ It asks these interactive questions:
 
 1. Screen rotation
 2. RustDesk unattended password
-3. GitHub repo for the kiosk webapp
-4. Whether to open the kiosk app immediately after setup
+3. What kind of kiosk to deploy
+4. GitHub repo for a webapp kiosk, or Dropbox link for a video kiosk
+5. Whether to register the totem now
+6. If you choose registration: totem name, type, description, and location
+7. What to do next: launch now, reboot, or do nothing
 
 Then it applies the rest and prints what it did after each step.
 
@@ -72,6 +75,7 @@ If you are not inside a checkout on the Pi, use the pipeable form instead:
 That command:
 
 - detects the machine name from the system hostname
+- asks for the totem type when it cannot reuse the current wizard selection
 - asks for the totem name
 - asks for the totem description
 - asks for the totem location
@@ -80,6 +84,7 @@ That command:
 
 The hourly reporter sends:
 
+- `totem_type`: `webapp` or `video`
 - `machineName`: the current system hostname at the moment the heartbeat is sent
 - `kiosk_running`: `true` when `labwc` is running for the desktop user
 - `webapp_running`: `true` when `127.0.0.1:8080` is answering

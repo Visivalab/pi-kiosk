@@ -39,7 +39,18 @@ class TotemStatusReporterConfig:
     endpoint_url: str
     token: str
     totem_id: str
+    totem_type: str
     desktop_user: str
+
+
+@dataclass(frozen=True)
+class TotemConnectionDetails:
+    rustdesk_id: str | None
+    rustdesk_password: str | None
+    ssh_user: str
+    ssh_port: int
+    ip_address: str | None
+    ip_addresses: tuple[str, ...]
 
 
 class Host(Protocol):
@@ -108,17 +119,24 @@ class Host(Protocol):
         progress: Callable[[str], None] | None = None,
     ) -> RustDeskInstall: ...
 
+    def connection_details(
+        self,
+        rustdesk_password: str | None = None,
+    ) -> TotemConnectionDetails: ...
+
     def register_totem(
         self,
         endpoint_url: str,
         token: str,
         machine_name: str,
+        totem_type: str,
         totem_name: str,
         description: str,
         location: str,
+        connection: TotemConnectionDetails,
     ) -> None: ...
 
     def install_totem_status_reporter(
         self,
         config: TotemStatusReporterConfig,
-    ) -> None: ...
+    ) -> str | None: ...

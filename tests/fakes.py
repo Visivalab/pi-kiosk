@@ -3,6 +3,7 @@ from typing import Callable
 
 from pi_kiosk.host import (
     RustDeskInstall,
+    TotemConnectionDetails,
     TotemStatusReporterConfig,
     VideoDeployment,
     VideoSource,
@@ -84,6 +85,7 @@ class FakeHost:
         self.directories: set[str] = set()
         self.totem_registration_requests: list[dict[str, str]] = []
         self.totem_status_reporter_installs: list[TotemStatusReporterConfig] = []
+        self.connection_details_requests: list[str | None] = []
 
     def home(self) -> str:
         return self.home_dir
@@ -219,28 +221,47 @@ class FakeHost:
                 self.rustdesk_progress_messages.append(message)
         return self.rustdesk_install
 
+    def connection_details(
+        self,
+        rustdesk_password: str | None = None,
+    ) -> TotemConnectionDetails:
+        self.connection_details_requests.append(rustdesk_password)
+        return TotemConnectionDetails(
+            rustdesk_id=self.rustdesk_install.rustdesk_id,
+            rustdesk_password=rustdesk_password,
+            ssh_user=self.username,
+            ssh_port=22,
+            ip_address="192.168.1.50",
+            ip_addresses=("192.168.1.50",),
+        )
+
     def register_totem(
         self,
         endpoint_url: str,
         token: str,
         machine_name: str,
+        totem_type: str,
         totem_name: str,
         description: str,
         location: str,
+        connection: TotemConnectionDetails,
     ) -> None:
         self.totem_registration_requests.append(
             {
                 "endpoint_url": endpoint_url,
                 "token": token,
                 "machine_name": machine_name,
+                "totem_type": totem_type,
                 "totem_name": totem_name,
                 "description": description,
                 "location": location,
+                "connection": connection,
             }
         )
 
     def install_totem_status_reporter(
         self,
         config: TotemStatusReporterConfig,
-    ) -> None:
+    ) -> str | None:
         self.totem_status_reporter_installs.append(config)
+        return None

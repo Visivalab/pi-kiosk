@@ -1,4 +1,5 @@
 import json
+import subprocess
 import tempfile
 import unittest
 from io import BytesIO
@@ -7,7 +8,7 @@ from unittest import mock
 from urllib import error
 
 from pi_kiosk.errors import UserFacingError
-from pi_kiosk.host import TotemStatusReporterConfig, VideoSource
+from pi_kiosk.host import TotemConnectionDetails, TotemStatusReporterConfig, VideoSource
 from pi_kiosk.linux import (
     LinuxHost,
     NeedSudoUser,
@@ -269,9 +270,18 @@ class LinuxHostTests(unittest.TestCase):
                         "https://dashboard.example.com/register-new-totem",
                         "totem-secret",
                         "minipc-07",
+                        "webapp",
                         "Hall Screen",
                         "Main entrance display",
                         "Reception",
+                        TotemConnectionDetails(
+                            rustdesk_id="987 654 321",
+                            rustdesk_password="secret-pass",
+                            ssh_user="pi",
+                            ssh_port=2222,
+                            ip_address="192.168.1.50",
+                            ip_addresses=("192.168.1.50", "10.0.0.12"),
+                        ),
                     )
 
         request = urlopen.call_args.args[0]
@@ -283,11 +293,18 @@ class LinuxHostTests(unittest.TestCase):
             json.loads(request.data.decode("utf-8")),
             {
                 "totem_id": "minipc-07",
+                "totemType": "webapp",
                 "machineName": "minipc-07",
                 "machineId": "machine-123",
                 "name": "Hall Screen",
                 "description": "Main entrance display",
                 "location": "Reception",
+                "rustdeskId": "987 654 321",
+                "rustdeskPassword": "secret-pass",
+                "sshUser": "pi",
+                "sshPort": 2222,
+                "ipAddress": "192.168.1.50",
+                "ipAddresses": ["192.168.1.50", "10.0.0.12"],
                 "registeredAt": mock.ANY,
             },
         )
@@ -312,9 +329,18 @@ class LinuxHostTests(unittest.TestCase):
                         "https://dashboard.example.com/register-new-totem",
                         "totem-secret",
                         "minipc-07",
+                        "video",
                         "Hall Screen",
                         "Main entrance display",
                         "Reception",
+                        TotemConnectionDetails(
+                            rustdesk_id=None,
+                            rustdesk_password=None,
+                            ssh_user="pi",
+                            ssh_port=22,
+                            ip_address=None,
+                            ip_addresses=(),
+                        ),
                     )
 
     def test_install_totem_status_reporter_writes_files_and_enables_timer(self):
@@ -323,6 +349,7 @@ class LinuxHostTests(unittest.TestCase):
             endpoint_url="https://dashboard.example.com/totem-status",
             token="status-secret",
             totem_id="minipc-07",
+            totem_type="video",
             desktop_user="kiosk",
         )
 
@@ -342,8 +369,16 @@ class LinuxHostTests(unittest.TestCase):
                                 self.assertTrue(script.is_file())
                                 self.assertEqual(script.stat().st_mode & 0o777, 0o755)
                                 self.assertIn(
+                                    '"totem_type": config["totemType"]',
+                                    script.read_text(encoding="utf-8"),
+                                )
+                                self.assertIn(
                                     '"kiosk_running": kiosk_running',
                                     script.read_text(encoding="utf-8"),
+                                )
+                                self.assertIn(
+                                    '"totemType": "video"',
+                                    status_config.read_text(encoding="utf-8"),
                                 )
                                 self.assertIn(
                                     '"webapp_running": webapp_running',
@@ -359,6 +394,7 @@ class LinuxHostTests(unittest.TestCase):
                                         "endpointUrl": "https://dashboard.example.com/totem-status",
                                         "token": "status-secret",
                                         "totemId": "minipc-07",
+                                        "totemType": "video",
                                         "desktopUser": "kiosk",
                                         "port": 8080,
                                     },
@@ -377,9 +413,63 @@ class LinuxHostTests(unittest.TestCase):
                                         mock.call(
                                             ["systemctl", "enable", "--now", "pi-kiosk-totem-status.timer"]
                                         ),
-                                        mock.call(["systemctl", "start", "pi-kiosk-totem-status.service"]),
+                                        mock.call(
+                                            ["systemctl", "start", "pi-kiosk-totem-status.service"],
+                                            check=False,
+                                        ),
                                     ]
                                 )
+
+    def test_install_totem_status_reporter_returns_warning_when_first_run_fails(self):
+        host = LinuxHost()
+        config = TotemStatusReporterConfig(
+            endpoint_url="https://dashboard.example.com/totem-status",
+            token="status-secret",
+            totem_id="minipc-07",
+            totem_type="video",
+            desktop_user="kiosk",
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            script = root / "usr" / "local" / "lib" / "pi-kiosk" / "totem-status.py"
+            status_config = root / "etc" / "pi-kiosk" / "totem-status.json"
+            service = root / "etc" / "systemd" / "system" / "pi-kiosk-totem-status.service"
+            timer = root / "etc" / "systemd" / "system" / "pi-kiosk-totem-status.timer"
+
+            with mock.patch("pi_kiosk.linux.status_script_path", return_value=script):
+                with mock.patch("pi_kiosk.linux.status_config_path", return_value=status_config):
+                    with mock.patch("pi_kiosk.linux.status_service_path", return_value=service):
+                        with mock.patch("pi_kiosk.linux.status_timer_path", return_value=timer):
+                            with mock.patch.object(
+                                host,
+                                "run",
+                                side_effect=[
+                                    subprocess.CompletedProcess(
+                                        ["systemctl", "daemon-reload"], 0
+                                    ),
+                                    subprocess.CompletedProcess(
+                                        ["systemctl", "enable", "--now", "pi-kiosk-totem-status.timer"],
+                                        0,
+                                    ),
+                                    subprocess.CompletedProcess(
+                                        ["systemctl", "start", "pi-kiosk-totem-status.service"],
+                                        1,
+                                    ),
+                                ],
+                            ) as run:
+                                warning = host.install_totem_status_reporter(config)
+
+        self.assertIsNotNone(warning)
+        self.assertIn("first status run failed", warning)
+        self.assertIn("journalctl -u pi-kiosk-totem-status.service", warning)
+        run.assert_has_calls(
+            [
+                mock.call(["systemctl", "daemon-reload"]),
+                mock.call(["systemctl", "enable", "--now", "pi-kiosk-totem-status.timer"]),
+                mock.call(["systemctl", "start", "pi-kiosk-totem-status.service"], check=False),
+            ]
+        )
 
 if __name__ == "__main__":
     unittest.main()

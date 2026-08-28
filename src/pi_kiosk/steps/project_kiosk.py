@@ -33,13 +33,15 @@ class ProjectKioskStep:
     def __init__(
         self,
         *,
+        prompt_for_next_action: bool = True,
         webapp_step: WebAppKioskStep | None = None,
         video_step: VideoKioskStep | None = None,
     ) -> None:
         self._steps = {
-            WEBAPP: webapp_step or WebAppKioskStep(),
-            VIDEO: video_step or VideoKioskStep(),
+            WEBAPP: webapp_step or WebAppKioskStep(prompt_for_next_action=prompt_for_next_action),
+            VIDEO: video_step or VideoKioskStep(prompt_for_next_action=prompt_for_next_action),
         }
+        self._last_project_type: str | None = None
 
     def ask(self, ui: UI) -> ProjectSelection:
         project_type = ui.choose(self.title, list(self.choices))
@@ -47,4 +49,24 @@ class ProjectKioskStep:
         return ProjectSelection(project_type=project_type, source=source)
 
     def apply(self, host: Host, selection: ProjectSelection) -> str:
+        self._last_project_type = selection.project_type
         return self._steps[selection.project_type].apply(host, selection.source)
+
+    def next_action_prompt(self) -> str:
+        return self._current_step().next_action_prompt()
+
+    def next_action_choices(self) -> list[Choice]:
+        return self._current_step().next_action_choices()
+
+    def perform_next_action(self, host: Host, action: str) -> str:
+        return self._current_step().perform_next_action(host, action)
+
+    def selected_project_type(self) -> str:
+        if self._last_project_type is None:
+            raise RuntimeError("Project kiosk step has not run yet.")
+        return self._last_project_type
+
+    def _current_step(self) -> WebAppKioskStep | VideoKioskStep:
+        if self._last_project_type is None:
+            raise RuntimeError("Project kiosk step has not run yet.")
+        return self._steps[self._last_project_type]

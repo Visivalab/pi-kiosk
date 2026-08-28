@@ -1,7 +1,9 @@
 from pi_kiosk.host import Host
 from pi_kiosk.steps.autologin import AutologinStep
+from pi_kiosk.steps.final_action import FinalActionStep
 from pi_kiosk.steps.nosleep import NoSleepStep
 from pi_kiosk.steps.project_kiosk import ProjectKioskStep
+from pi_kiosk.steps.register_totem import RegisterTotemStep
 from pi_kiosk.steps.rotation import RotationStep
 from pi_kiosk.steps.rustdesk import RustDeskStep
 from pi_kiosk.steps.touch import TouchStep
@@ -17,13 +19,21 @@ class NeedRoot(RuntimeError):
 
 
 def default_steps():
+    rustdesk_step = RustDeskStep()
+    project_step = ProjectKioskStep(prompt_for_next_action=False)
+    register_step = RegisterTotemStep(
+        project_step=project_step,
+        rustdesk_step=rustdesk_step,
+    )
     return (
         RotationStep(),
         TouchStep(),
         NoSleepStep(),
         AutologinStep(),
-        RustDeskStep(),
-        ProjectKioskStep(),
+        rustdesk_step,
+        project_step,
+        register_step,
+        FinalActionStep(project_step),
     )
 
 

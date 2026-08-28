@@ -154,9 +154,10 @@ class WebAppKioskStep:
     choices = ()
     interactive = True
 
-    def __init__(self) -> None:
+    def __init__(self, *, prompt_for_next_action: bool = True) -> None:
         self._progress = None
         self._choose: Callable[[str, list[Choice]], str] | None = None
+        self._prompt_for_next_action = prompt_for_next_action
 
     def ask(self, ui: UI) -> WebAppSource:
         self._progress = ui.progress
@@ -198,28 +199,39 @@ class WebAppKioskStep:
         install_kiosk_autostart(host, launcher_path(home))
         install_cursor_keybind(host)
 
-        next_action = CLOSE
-        if self._choose is not None:
-            next_action = self._choose(NEXT_ACTION_PROMPT, NEXT_ACTION_CHOICES)
-
         log_report = f"Attach a terminal to the server logs with: {log_tail_command(home)}."
-        action_report = f"The app will be on {action_url()} after reboot."
-        if next_action == SIMULATE_AUTORUN:
-            host.launch_kiosk_now(launcher_path(home))
-            action_report = (
-                "Simulated autorun for testing. Cursor may not automatically hide "
-                f"until the next graphical login. The app is on {action_url()}."
-            )
-        elif next_action == REBOOT:
-            host.reboot()
-            action_report = "Rebooting now for the final production startup."
-        elif next_action == CLOSE:
-            host.launch_webapp_server_now(launcher_path(home))
-            action_report = f"The app is live on {action_url()} without opening Chromium."
-
         report = (
             f"Done: webapp kiosk deployed from {deployment.repo_ref} using "
             f"{deployment.artifact_dir}/. Chromium will start on the next graphical login."
-            f" The mouse cursor will hide after idle. {action_report} {log_report}"
+            f" The mouse cursor will hide after idle. {log_report}"
         )
+        if self._prompt_for_next_action:
+            next_action = CLOSE
+            if self._choose is not None:
+                next_action = self._choose(NEXT_ACTION_PROMPT, NEXT_ACTION_CHOICES)
+            report = f"{report} {self.perform_next_action(host, next_action)}"
         return report
+
+    def next_action_prompt(self) -> str:
+        return NEXT_ACTION_PROMPT
+
+    def next_action_choices(self) -> list[Choice]:
+        return list(NEXT_ACTION_CHOICES)
+
+    def perform_next_action(self, host: Host, action: str) -> str:
+        home = host.home()
+        log_report = f"Attach a terminal to the server logs with: {log_tail_command(home)}."
+        if action == SIMULATE_AUTORUN:
+            host.launch_kiosk_now(launcher_path(home))
+            return (
+                "Done: simulated autorun for testing. Cursor may not automatically hide "
+                f"until the next graphical login. The app is on {action_url()}. {log_report}"
+            )
+        if action == REBOOT:
+            host.reboot()
+            return f"Done: rebooting now for the final production startup. {log_report}"
+
+        host.launch_webapp_server_now(launcher_path(home))
+        return (
+            f"Done: the app is live on {action_url()} without opening Chromium. {log_report}"
+        )

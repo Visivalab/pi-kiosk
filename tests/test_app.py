@@ -5,7 +5,9 @@ from tests.fakes import FakeHost
 
 from pi_kiosk.app import NotARaspberryPi, Wizard
 from pi_kiosk.host import WebAppSource
-from pi_kiosk.steps.project_kiosk import NEXT_ACTION_PROMPT, ProjectKioskStep, TYPE_OF_PROJECT_PROMPT
+from pi_kiosk.steps.kiosk_common import NEXT_ACTION_PROMPT
+from pi_kiosk.steps.project_kiosk import ProjectKioskStep, TYPE_OF_PROJECT_PROMPT
+from pi_kiosk.steps.register_totem import REGISTER_TOTEM_PROMPT
 from pi_kiosk.steps.rotation import RotationStep
 from pi_kiosk.steps.rustdesk import RustDeskStep
 
@@ -19,6 +21,7 @@ class WizardTests(unittest.TestCase):
                 "RustDesk password": "secret-pass",
                 TYPE_OF_PROJECT_PROMPT: "webapp",
                 "GitHub repo": "Visivalab/demo-app",
+                REGISTER_TOTEM_PROMPT: "no",
                 NEXT_ACTION_PROMPT: "simulate",
             }
         )
@@ -32,10 +35,11 @@ class WizardTests(unittest.TestCase):
                 "RustDesk password",
                 TYPE_OF_PROJECT_PROMPT,
                 "GitHub repo",
+                REGISTER_TOTEM_PROMPT,
                 NEXT_ACTION_PROMPT,
             ],
         )
-        self.assertEqual(len(reports), 6)
+        self.assertEqual(len(reports), 8)
         self.assertTrue(all(item.lower().startswith("done:") for item in reports))
         self.assertEqual(
             [message for message in ui.messages if message.lower().startswith("done:")],
@@ -48,6 +52,8 @@ class WizardTests(unittest.TestCase):
         self.assertIn("autologin", reports[3].lower())
         self.assertIn("rustdesk", reports[4].lower())
         self.assertIn("kiosk", reports[5].lower())
+        self.assertIn("skipped totem registration", reports[6].lower())
+        self.assertIn("simulated autorun", reports[7].lower())
 
         autostart = host.files["/home/pi/.config/labwc/autostart"]
         self.assertIn("--transform 270", autostart)
@@ -79,6 +85,7 @@ class WizardTests(unittest.TestCase):
                 "RustDesk password": "secret-pass",
                 TYPE_OF_PROJECT_PROMPT: "webapp",
                 "GitHub repo": "Visivalab/demo-app",
+                REGISTER_TOTEM_PROMPT: "no",
             }
         )
 
@@ -91,5 +98,5 @@ class WizardTests(unittest.TestCase):
     def test_rotation_step_is_the_only_question(self):
         self.assertEqual(
             Wizard.question_step_ids(),
-            [RotationStep.id, RustDeskStep.id, ProjectKioskStep.id],
+            [RotationStep.id, RustDeskStep.id, ProjectKioskStep.id, "register-totem", "next-action"],
         )
