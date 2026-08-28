@@ -4,7 +4,8 @@ import os
 from dataclasses import dataclass
 
 from pi_kiosk.errors import UserFacingError
-from pi_kiosk.host import Host
+from pi_kiosk.host import Host, TotemStatusReporterConfig
+from pi_kiosk.totem_status import derive_status_url
 from pi_kiosk.ui import UI
 
 REGISTER_TOTEM_URL = "http://72.62.59.66:8083/register-totem"
@@ -19,6 +20,8 @@ TOTEM_LOCATION_PROMPT = "Totem location"
 class TotemRegistrationConfig:
     endpoint_url: str
     token: str
+    status_endpoint_url: str | None
+    status_token: str
 
 
 @dataclass(frozen=True)
@@ -33,7 +36,16 @@ def default_config() -> TotemRegistrationConfig | None:
     token = os.environ.get("PI_KIOSK_REGISTER_TOTEM_TOKEN", REGISTER_TOTEM_TOKEN).strip()
     if not endpoint_url or not token:
         return None
-    return TotemRegistrationConfig(endpoint_url=endpoint_url, token=token)
+    status_endpoint_url = os.environ.get("PI_KIOSK_TOTEM_STATUS_URL", "").strip()
+    if not status_endpoint_url:
+        status_endpoint_url = derive_status_url(endpoint_url)
+    status_token = os.environ.get("PI_KIOSK_TOTEM_STATUS_TOKEN", token).strip()
+    return TotemRegistrationConfig(
+        endpoint_url=endpoint_url,
+        token=token,
+        status_endpoint_url=status_endpoint_url,
+        status_token=status_token,
+    )
 
 
 class TotemRegistrar:
@@ -64,7 +76,24 @@ class TotemRegistrar:
             registration.description,
             registration.location,
         )
-        return f"Done: totem registered for machine {machine_name}."
+        if config.status_endpoint_url and config.status_token:
+            host.install_totem_status_reporter(
+                TotemStatusReporterConfig(
+                    endpoint_url=config.status_endpoint_url,
+                    token=config.status_token,
+                    machine_name=machine_name,
+                    totem_id=machine_name,
+                    desktop_user=host.user(),
+                )
+            )
+            return (
+                f"Done: totem registered for machine {machine_name}. "
+                "Hourly status reporter installed."
+            )
+        return (
+            f"Done: totem registered for machine {machine_name}. "
+            "Hourly status reporter was not installed because no status endpoint is configured."
+        )
 
 
 def _ask_required(ui: UI, prompt: str) -> str:

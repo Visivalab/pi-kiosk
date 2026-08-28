@@ -7,13 +7,13 @@ from unittest import mock
 from urllib import error
 
 from pi_kiosk.errors import UserFacingError
+from pi_kiosk.host import TotemStatusReporterConfig, VideoSource
 from pi_kiosk.linux import (
     LinuxHost,
     NeedSudoUser,
     _libinput_reports_touch,
     _select_rustdesk_deb_asset,
 )
-from pi_kiosk.host import VideoSource
 
 
 class FakeResponse(BytesIO):
@@ -316,6 +316,64 @@ class LinuxHostTests(unittest.TestCase):
                         "Main entrance display",
                         "Reception",
                     )
+
+    def test_install_totem_status_reporter_writes_files_and_enables_timer(self):
+        host = LinuxHost()
+        config = TotemStatusReporterConfig(
+            endpoint_url="https://dashboard.example.com/totem-status",
+            token="status-secret",
+            machine_name="minipc-07",
+            totem_id="minipc-07",
+            desktop_user="kiosk",
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            script = root / "usr" / "local" / "lib" / "pi-kiosk" / "totem-status.py"
+            status_config = root / "etc" / "pi-kiosk" / "totem-status.json"
+            service = root / "etc" / "systemd" / "system" / "pi-kiosk-totem-status.service"
+            timer = root / "etc" / "systemd" / "system" / "pi-kiosk-totem-status.timer"
+
+            with mock.patch("pi_kiosk.linux.status_script_path", return_value=script):
+                with mock.patch("pi_kiosk.linux.status_config_path", return_value=status_config):
+                    with mock.patch("pi_kiosk.linux.status_service_path", return_value=service):
+                        with mock.patch("pi_kiosk.linux.status_timer_path", return_value=timer):
+                            with mock.patch.object(host, "run") as run:
+                                host.install_totem_status_reporter(config)
+                                self.assertTrue(script.is_file())
+                                self.assertEqual(script.stat().st_mode & 0o777, 0o755)
+                                self.assertIn(
+                                    "totem opened but webapp not running",
+                                    script.read_text(encoding="utf-8"),
+                                )
+                                self.assertEqual(
+                                    json.loads(status_config.read_text(encoding="utf-8")),
+                                    {
+                                        "endpointUrl": "https://dashboard.example.com/totem-status",
+                                        "token": "status-secret",
+                                        "machineName": "minipc-07",
+                                        "totemId": "minipc-07",
+                                        "desktopUser": "kiosk",
+                                        "port": 8080,
+                                    },
+                                )
+                                self.assertIn(
+                                    "ExecStart=/usr/bin/python3",
+                                    service.read_text(encoding="utf-8"),
+                                )
+                                self.assertIn(
+                                    "OnUnitActiveSec=1h",
+                                    timer.read_text(encoding="utf-8"),
+                                )
+                                run.assert_has_calls(
+                                    [
+                                        mock.call(["systemctl", "daemon-reload"]),
+                                        mock.call(
+                                            ["systemctl", "enable", "--now", "pi-kiosk-totem-status.timer"]
+                                        ),
+                                        mock.call(["systemctl", "start", "pi-kiosk-totem-status.service"]),
+                                    ]
+                                )
 
 if __name__ == "__main__":
     unittest.main()

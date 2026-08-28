@@ -3,6 +3,7 @@ from typing import Callable
 
 from pi_kiosk.host import (
     RustDeskInstall,
+    TotemStatusReporterConfig,
     VideoDeployment,
     VideoSource,
     WebAppDeployment,
@@ -82,6 +83,7 @@ class FakeHost:
         self.installed_packages: list[tuple[str, ...]] = []
         self.directories: set[str] = set()
         self.totem_registration_requests: list[dict[str, str]] = []
+        self.totem_status_reporter_installs: list[TotemStatusReporterConfig] = []
 
     def home(self) -> str:
         return self.home_dir
@@ -236,3 +238,9 @@ class FakeHost:
                 "location": location,
             }
         )
+
+    def install_totem_status_reporter(
+        self,
+        config: TotemStatusReporterConfig,
+    ) -> None:
+        self.totem_status_reporter_installs.append(config)

@@ -34,6 +34,15 @@ class RustDeskInstall:
     asset_name: str
 
 
+@dataclass(frozen=True)
+class TotemStatusReporterConfig:
+    endpoint_url: str
+    token: str
+    machine_name: str
+    totem_id: str
+    desktop_user: str
+
+
 class Host(Protocol):
     """System port. Production talks to a Pi; tests use an in-memory fake."""
 
@@ -108,4 +117,9 @@ class Host(Protocol):
         totem_name: str,
         description: str,
         location: str,
+    ) -> None: ...
+
+    def install_totem_status_reporter(
+        self,
+        config: TotemStatusReporterConfig,
     ) -> None: ...

@@ -20,10 +20,21 @@ from pi_kiosk.detect import looks_like_raspberry_pi
 from pi_kiosk.errors import UserFacingError
 from pi_kiosk.host import (
     RustDeskInstall,
+    TotemStatusReporterConfig,
     VideoDeployment,
     VideoSource,
     WebAppDeployment,
     WebAppSource,
+)
+from pi_kiosk.totem_status import (
+    reporter_config_json,
+    reporter_script,
+    service_unit,
+    status_config_path,
+    status_script_path,
+    status_service_path,
+    status_timer_path,
+    timer_unit,
 )
 
 
@@ -360,6 +371,30 @@ class LinuxHost:
 
         if status < 200 or status >= 300:
             raise UserFacingError(f"Totem registration failed with HTTP {status}.")
+
+    def install_totem_status_reporter(
+        self,
+        config: TotemStatusReporterConfig,
+    ) -> None:
+        script_path = status_script_path()
+        config_path = status_config_path()
+        service_path = status_service_path()
+        timer_path = status_timer_path()
+
+        script_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        service_path.parent.mkdir(parents=True, exist_ok=True)
+
+        script_path.write_text(reporter_script(), encoding="utf-8")
+        script_path.chmod(0o755)
+        config_path.write_text(reporter_config_json(config), encoding="utf-8")
+        service_path.write_text(service_unit(), encoding="utf-8")
+        timer_path.write_text(timer_unit(), encoding="utf-8")
+
+        self.run(["systemctl", "daemon-reload"])
+        self.run(["systemctl", "enable", "--now", timer_path.name])
+        self.run(["systemctl", "start", service_path.name])
+
     def _own(self, path: Path) -> None:
         if not self.is_root():
             return
