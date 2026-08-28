@@ -28,7 +28,7 @@ It asks these interactive questions:
 3. What kind of kiosk to deploy
 4. GitHub repo for a webapp kiosk, or Dropbox link for a video kiosk
 5. Whether to register the totem now
-6. If you choose registration: totem name, type, description, and location
+6. If you choose registration: totem name and optional description/location
 7. What to do next: launch now, reboot, or do nothing
 
 Then it applies the rest and prints what it did after each step.
@@ -77,8 +77,9 @@ That command:
 - detects the machine name from the system hostname
 - asks for the totem type when it cannot reuse the current wizard selection
 - asks for the totem name
-- asks for the totem description
-- asks for the totem location
+- asks for the totem description (optional)
+- asks for the totem location (optional)
+- asks for the RustDesk password used by the backend
 - sends a `POST` to your configured registration endpoint
 - installs an hourly systemd timer that reports raw runtime facts to the backend
 

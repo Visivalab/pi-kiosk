@@ -122,7 +122,7 @@ class CliTests(unittest.TestCase):
                         "Totem name": "Hall Screen",
                         "Totem description": "Main entrance display",
                         "Totem location": "Reception",
-                        RUSTDESK_PASSWORD_PROMPT: "",
+                        RUSTDESK_PASSWORD_PROMPT: "secret-pass",
                     }
                 ),
                 stdout=stdout,
@@ -145,12 +145,12 @@ class CliTests(unittest.TestCase):
                     "location": "Reception",
                     "connection": TotemConnectionDetails(
                         rustdesk_id="123 456 789",
-                        rustdesk_password=None,
+                        rustdesk_password="secret-pass",
                     ),
                 }
             ],
         )
-        self.assertEqual(host.connection_details_requests, [None])
+        self.assertEqual(host.connection_details_requests, ["secret-pass"])
         self.assertEqual(len(host.totem_status_reporter_installs), 1)
 
     def test_register_totem_command_installs_hourly_status_reporter(self):
@@ -232,7 +232,7 @@ class CliTests(unittest.TestCase):
                         "Totem name": "Hall Screen",
                         "Totem description": "Main entrance display",
                         "Totem location": "Reception",
-                        RUSTDESK_PASSWORD_PROMPT: "",
+                        RUSTDESK_PASSWORD_PROMPT: "secret-pass",
                     }
                 ),
                 stdout=stdout,
@@ -244,15 +244,61 @@ class CliTests(unittest.TestCase):
         self.assertIn("totem registered for machine minipc-07", stdout.getvalue().lower())
         self.assertIn("first status run failed", stdout.getvalue().lower())
 
-    def test_register_totem_command_retries_empty_fields(self):
+    def test_register_totem_command_allows_blank_description_and_location(self):
+        host = FakeHost(machine_name="minipc-07")
+        ui = FakeUI(
+            answers={
+                TOTEM_TYPE_PROMPT: "video",
+                "Totem name": "Hall Screen",
+                "Totem description": "",
+                "Totem location": "",
+                RUSTDESK_PASSWORD_PROMPT: "secret-pass",
+            }
+        )
+
+        with mock.patch.dict(
+            "os.environ",
+            {
+                "PI_KIOSK_REGISTER_TOTEM_URL": "https://dashboard.example.com/register-new-totem",
+                "PI_KIOSK_REGISTER_TOTEM_TOKEN": "totem-secret",
+            },
+            clear=False,
+        ):
+            code = main(
+                argv=["register-totem"],
+                host=host,
+                ui=ui,
+                stdout=io.StringIO(),
+                stderr=io.StringIO(),
+            )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(
+            ui.prompts,
+            [
+                TOTEM_TYPE_PROMPT,
+                "Totem name",
+                "Totem description",
+                "Totem location",
+                RUSTDESK_PASSWORD_PROMPT,
+            ],
+        )
+        self.assertEqual(
+            [message for message in ui.messages if message.startswith("WARN: ")],
+            [],
+        )
+        self.assertEqual(host.totem_registration_requests[0]["description"], "")
+        self.assertEqual(host.totem_registration_requests[0]["location"], "")
+
+    def test_register_totem_command_retries_empty_required_fields(self):
         host = FakeHost(machine_name="minipc-07")
         ui = FakeUI(
             answers={
                 TOTEM_TYPE_PROMPT: "video",
                 "Totem name": ["", "Hall Screen"],
-                "Totem description": ["", "Main entrance display"],
-                "Totem location": ["", "Reception"],
-                RUSTDESK_PASSWORD_PROMPT: "",
+                "Totem description": "",
+                "Totem location": "",
+                RUSTDESK_PASSWORD_PROMPT: ["", "secret-pass"],
             }
         )
 
@@ -280,9 +326,8 @@ class CliTests(unittest.TestCase):
                 "Totem name",
                 "Totem name",
                 "Totem description",
-                "Totem description",
                 "Totem location",
-                "Totem location",
+                RUSTDESK_PASSWORD_PROMPT,
                 RUSTDESK_PASSWORD_PROMPT,
             ],
         )
@@ -290,8 +335,7 @@ class CliTests(unittest.TestCase):
             [message for message in ui.messages if message.startswith("WARN: ")],
             [
                 "WARN: Totem name cannot be empty.",
-                "WARN: Totem description cannot be empty.",
-                "WARN: Totem location cannot be empty.",
+                "WARN: RustDesk password for backend cannot be empty.",
             ],
         )
 
