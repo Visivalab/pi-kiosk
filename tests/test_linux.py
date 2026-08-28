@@ -343,7 +343,11 @@ class LinuxHostTests(unittest.TestCase):
                                 self.assertTrue(script.is_file())
                                 self.assertEqual(script.stat().st_mode & 0o777, 0o755)
                                 self.assertIn(
-                                    "totem opened but webapp not running",
+                                    '"kiosk_running": kiosk_running',
+                                    script.read_text(encoding="utf-8"),
+                                )
+                                self.assertIn(
+                                    '"webapp_running": webapp_running',
                                     script.read_text(encoding="utf-8"),
                                 )
                                 self.assertEqual(

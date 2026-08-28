@@ -20,8 +20,6 @@ TOTEM_LOCATION_PROMPT = "Totem location"
 class TotemRegistrationConfig:
     endpoint_url: str
     token: str
-    status_endpoint_url: str | None
-    status_token: str
 
 
 @dataclass(frozen=True)
@@ -36,15 +34,9 @@ def default_config() -> TotemRegistrationConfig | None:
     token = os.environ.get("PI_KIOSK_REGISTER_TOTEM_TOKEN", REGISTER_TOTEM_TOKEN).strip()
     if not endpoint_url or not token:
         return None
-    status_endpoint_url = os.environ.get("PI_KIOSK_TOTEM_STATUS_URL", "").strip()
-    if not status_endpoint_url:
-        status_endpoint_url = derive_status_url(endpoint_url)
-    status_token = os.environ.get("PI_KIOSK_TOTEM_STATUS_TOKEN", token).strip()
     return TotemRegistrationConfig(
         endpoint_url=endpoint_url,
         token=token,
-        status_endpoint_url=status_endpoint_url,
-        status_token=status_token,
     )
 
 
@@ -76,11 +68,12 @@ class TotemRegistrar:
             registration.description,
             registration.location,
         )
-        if config.status_endpoint_url and config.status_token:
+        status_endpoint_url = derive_status_url(config.endpoint_url)
+        if status_endpoint_url:
             host.install_totem_status_reporter(
                 TotemStatusReporterConfig(
-                    endpoint_url=config.status_endpoint_url,
-                    token=config.status_token,
+                    endpoint_url=status_endpoint_url,
+                    token=config.token,
                     machine_name=machine_name,
                     totem_id=machine_name,
                     desktop_user=host.user(),

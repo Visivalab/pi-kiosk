@@ -6,9 +6,6 @@ from urllib.parse import SplitResult, urlsplit, urlunsplit
 
 from pi_kiosk.host import TotemStatusReporterConfig
 
-STATUS_OPENED = "totem opened"
-STATUS_CLOSED = "totem closed"
-STATUS_WEBAPP_DOWN = "totem opened but webapp not running"
 STATUS_PORT = 8080
 STATUS_SCRIPT_PATH = Path("/usr/local/lib/pi-kiosk/totem-status.py")
 STATUS_CONFIG_PATH = Path("/etc/pi-kiosk/totem-status.json")
@@ -21,9 +18,9 @@ STATUS_TIMER_NAME = STATUS_TIMER_PATH.name
 def derive_status_url(register_url: str) -> str | None:
     parsed = urlsplit(register_url)
     parts = [part for part in parsed.path.split("/") if part]
-    if not parts or parts[-1] != "register-totem":
+    if not parts:
         return None
-    parts[-1] = "totem-status"
+    parts = [*parts[:-1], "totem-status"]
     updated = SplitResult(
         scheme=parsed.scheme,
         netloc=parsed.netloc,
@@ -76,11 +73,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib import error, request
 
-STATUS_OPENED = "totem opened"
-STATUS_CLOSED = "totem closed"
-STATUS_WEBAPP_DOWN = "totem opened but webapp not running"
-
-
 def _load_config(path: str) -> dict[str, object]:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
@@ -106,14 +98,12 @@ def _port_listening(port: int) -> bool:
         sock.close()
 
 
-def _status(config: dict[str, object]) -> str:
+def _facts(config: dict[str, object]) -> tuple[bool, bool]:
     user = str(config["desktopUser"])
     port = int(config.get("port", 8080))
-    if not _labwc_running(user):
-        return STATUS_CLOSED
-    if _port_listening(port):
-        return STATUS_OPENED
-    return STATUS_WEBAPP_DOWN
+    kiosk_running = _labwc_running(user)
+    webapp_running = _port_listening(port)
+    return kiosk_running, webapp_running
 
 
 def main(argv: list[str]) -> int:
@@ -122,11 +112,13 @@ def main(argv: list[str]) -> int:
         return 1
 
     config = _load_config(argv[1])
+    kiosk_running, webapp_running = _facts(config)
     payload = {
         "totem_id": config["totemId"],
         "machineName": config["machineName"],
-        "status": _status(config),
         "checkedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "kiosk_running": kiosk_running,
+        "webapp_running": webapp_running,
     }
     req = request.Request(
         str(config["endpointUrl"]),

@@ -76,27 +76,22 @@ That command:
 - asks for the totem description
 - asks for the totem location
 - sends a `POST` to your configured registration endpoint
-- installs an hourly systemd timer that reports one of:
-  - `totem opened`
-  - `totem closed`
-  - `totem opened but webapp not running`
+- installs an hourly systemd timer that reports raw runtime facts to the backend
 
-The hourly status reporter marks the totem as `opened` only when:
+The hourly reporter sends:
 
-- `labwc` is running for the desktop user
-- `127.0.0.1:8080` is answering
+- `kiosk_running`: `true` when `labwc` is running for the desktop user
+- `webapp_running`: `true` when `127.0.0.1:8080` is answering
 
 Configure the endpoint and token in [src/pi_kiosk/totem_registration.py](/mnt/c/Users/Nitropc/orca/pi-kiosk/src/pi_kiosk/totem_registration.py)
 or override them with:
 
 - `PI_KIOSK_REGISTER_TOTEM_URL`
 - `PI_KIOSK_REGISTER_TOTEM_TOKEN`
-- `PI_KIOSK_TOTEM_STATUS_URL`
-- `PI_KIOSK_TOTEM_STATUS_TOKEN`
 
-If `PI_KIOSK_TOTEM_STATUS_URL` is not set, the tool tries to infer it from
-the registration URL by replacing the final `register-totem` path segment with
-`totem-status`.
+The hourly status reporter reuses `PI_KIOSK_REGISTER_TOTEM_TOKEN`. Its status
+URL is inferred from `PI_KIOSK_REGISTER_TOTEM_URL` by replacing the final
+`register-totem` path segment with `totem-status`.
 
 ## What it will not do
 

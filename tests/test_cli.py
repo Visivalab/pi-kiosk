@@ -141,10 +141,7 @@ class CliTests(unittest.TestCase):
                 }
             ],
         )
-        self.assertEqual(
-            host.totem_status_reporter_installs,
-            [],
-        )
+        self.assertEqual(len(host.totem_status_reporter_installs), 1)
 
     def test_register_totem_command_installs_hourly_status_reporter(self):
         host = FakeHost(machine_name="minipc-07", user="kiosk")
@@ -156,8 +153,6 @@ class CliTests(unittest.TestCase):
             {
                 "PI_KIOSK_REGISTER_TOTEM_URL": "https://dashboard.example.com/register-new-totem",
                 "PI_KIOSK_REGISTER_TOTEM_TOKEN": "totem-secret",
-                "PI_KIOSK_TOTEM_STATUS_URL": "https://dashboard.example.com/totem-status",
-                "PI_KIOSK_TOTEM_STATUS_TOKEN": "status-secret",
             },
             clear=False,
         ):
@@ -186,7 +181,7 @@ class CliTests(unittest.TestCase):
         )
         install = host.totem_status_reporter_installs[0]
         self.assertEqual(install.endpoint_url, "https://dashboard.example.com/totem-status")
-        self.assertEqual(install.token, "status-secret")
+        self.assertEqual(install.token, "totem-secret")
         self.assertEqual(install.machine_name, "minipc-07")
         self.assertEqual(install.totem_id, "minipc-07")
         self.assertEqual(install.desktop_user, "kiosk")
@@ -245,8 +240,6 @@ class CliTests(unittest.TestCase):
             {
                 "PI_KIOSK_REGISTER_TOTEM_URL": "",
                 "PI_KIOSK_REGISTER_TOTEM_TOKEN": "",
-                "PI_KIOSK_TOTEM_STATUS_URL": "",
-                "PI_KIOSK_TOTEM_STATUS_TOKEN": "",
             },
             clear=False,
         ):
