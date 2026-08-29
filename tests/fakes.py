@@ -43,6 +43,7 @@ class FakeHost:
         touchscreen: bool = False,
         rustdesk_install: RustDeskInstall | None = None,
         saved_rustdesk_password: str | None = None,
+        rustdesk_present: bool = True,
     ) -> None:
         self.home_dir = home
         self.username = user
@@ -71,6 +72,7 @@ class FakeHost:
             asset_name="rustdesk-1.4.3-aarch64.deb",
         )
         self.saved_rustdesk_password = saved_rustdesk_password
+        self.rustdesk_present = rustdesk_present
         self.commands: list[list[str]] = []
         self.desktop_session_commands: list[list[str]] = []
         self.webapp_deploy_requests: list[tuple[WebAppSource, tuple[str, ...]]] = []
@@ -83,6 +85,7 @@ class FakeHost:
         self.rebooted = False
         self.rustdesk_progress_messages: list[str] = []
         self.rustdesk_passwords: list[str] = []
+        self.configured_rustdesk_passwords: list[str] = []
         self.installed_packages: list[tuple[str, ...]] = []
         self.directories: set[str] = set()
         self.totem_registration_requests: list[dict[str, str]] = []
@@ -213,6 +216,7 @@ class FakeHost:
     ) -> RustDeskInstall:
         self.rustdesk_passwords.append(password)
         self.saved_rustdesk_password = password
+        self.rustdesk_present = True
         if progress is not None:
             for message in (
                 "Resolving latest RustDesk release",
@@ -224,13 +228,20 @@ class FakeHost:
                 self.rustdesk_progress_messages.append(message)
         return self.rustdesk_install
 
+    def rustdesk_installed(self) -> bool:
+        return self.rustdesk_present
+
+    def configure_rustdesk_password(self, password: str) -> None:
+        self.configured_rustdesk_passwords.append(password)
+        self.saved_rustdesk_password = password
+
     def connection_details(
         self,
         rustdesk_password: str | None = None,
     ) -> TotemConnectionDetails:
         self.connection_details_requests.append(rustdesk_password)
         return TotemConnectionDetails(
-            rustdesk_id=self.rustdesk_install.rustdesk_id,
+            rustdesk_id=self.rustdesk_install.rustdesk_id if self.rustdesk_present else None,
             rustdesk_password=rustdesk_password
             if rustdesk_password is not None
             else self.saved_rustdesk_password,

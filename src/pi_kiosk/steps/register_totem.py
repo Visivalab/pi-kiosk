@@ -18,9 +18,11 @@ class RegisterTotemStep:
         self,
         registrar: TotemRegistrar | None = None,
         project_step: ProjectKioskStep | None = None,
+        host: Host | None = None,
     ) -> None:
         self._registrar = registrar or TotemRegistrar()
         self._project_step = project_step
+        self._host = host
 
     def ask(self, ui: UI) -> TotemRegistrationRequest | None:
         if not ui.confirm(self.title, default=True):
@@ -31,6 +33,7 @@ class RegisterTotemStep:
         return self._registrar.ask(
             ui,
             totem_type=totem_type,
+            host=self._host,
         )
 
     def apply(self, host: Host, registration: TotemRegistrationRequest | None) -> str:

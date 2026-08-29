@@ -10,6 +10,10 @@ from pi_kiosk.steps.project_kiosk import ProjectKioskStep, TYPE_OF_PROJECT_PROMP
 from pi_kiosk.steps.register_totem import REGISTER_TOTEM_PROMPT, RegisterTotemStep
 from pi_kiosk.steps.rotation import RotationStep
 from pi_kiosk.steps.rustdesk import RustDeskStep
+from pi_kiosk.totem_registration import (
+    RUSTDESK_INSTALL_PROMPT,
+    RUSTDESK_SET_PASSWORD_PROMPT,
+)
 
 
 class WizardTests(unittest.TestCase):
@@ -121,6 +125,8 @@ class WizardTests(unittest.TestCase):
             ),
         )
         self.assertNotIn("RustDesk password for backend", ui.prompts)
+        self.assertNotIn(RUSTDESK_INSTALL_PROMPT, ui.prompts)
+        self.assertNotIn(RUSTDESK_SET_PASSWORD_PROMPT, ui.prompts)
 
     def test_rotation_step_is_the_only_question(self):
         self.assertEqual(

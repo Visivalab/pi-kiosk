@@ -65,16 +65,18 @@ def _run_command(
                 "This tool only configures Raspberry Pi OS. "
                 "Nothing was changed on this machine."
             )
+        if not host.is_root():
+            raise NeedRoot("Run this tool with sudo. Nothing was changed.")
         if registrar.config() is None:
             raise UserFacingError("Totem registration is not configured.")
-        registration = registrar.ask(ui)
+        registration = registrar.ask(ui, host=host)
         report = registrar.register(host, registration)
     except KeyboardInterrupt:
         return 130
     except NotARaspberryPi as exc:
         print(str(exc), file=stderr)
         return 2
-    except (EOFError, NeedSudoUser, UserFacingError) as exc:
+    except (EOFError, NeedRoot, NeedSudoUser, UserFacingError) as exc:
         if isinstance(exc, EOFError):
             print(
                 "No terminal input was available for the registration prompts. "

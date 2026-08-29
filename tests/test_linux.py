@@ -133,6 +133,36 @@ class LinuxHostTests(unittest.TestCase):
                 text=True,
             )
 
+    def test_rustdesk_installed_checks_path(self):
+        host = LinuxHost()
+        with mock.patch("shutil.which", return_value="/usr/bin/rustdesk"):
+            self.assertTrue(host.rustdesk_installed())
+        with mock.patch("shutil.which", return_value=None):
+            self.assertFalse(host.rustdesk_installed())
+
+    def test_configure_rustdesk_password_persists_without_reinstalling(self):
+        host = LinuxHost()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            saved_password_path = Path(tmp) / "etc" / "pi-kiosk" / "rustdesk.json"
+
+            with mock.patch("pi_kiosk.linux.RUSTDESK_CREDENTIALS_PATH", saved_password_path):
+                with mock.patch.object(host, "_restart_rustdesk_service") as restart:
+                    with mock.patch("subprocess.run") as run:
+                        host.configure_rustdesk_password("secret-pass")
+
+            self.assertEqual(
+                json.loads(saved_password_path.read_text(encoding="utf-8")),
+                {"password": "secret-pass"},
+            )
+            self.assertEqual(saved_password_path.stat().st_mode & 0o777, 0o600)
+            run.assert_called_once_with(
+                ["rustdesk", "--password", "secret-pass"],
+                check=True,
+                text=True,
+            )
+            restart.assert_called_once_with()
+
     def test_connection_details_uses_saved_rustdesk_password_when_not_provided(self):
         host = LinuxHost()
 

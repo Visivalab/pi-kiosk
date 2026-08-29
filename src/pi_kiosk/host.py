@@ -115,6 +115,10 @@ class Host(Protocol):
         progress: Callable[[str], None] | None = None,
     ) -> RustDeskInstall: ...
 
+    def rustdesk_installed(self) -> bool: ...
+
+    def configure_rustdesk_password(self, password: str) -> None: ...
+
     def connection_details(
         self,
         rustdesk_password: str | None = None,

@@ -325,14 +325,20 @@ class LinuxHost:
         self._report_progress(progress, "Configuring RustDesk access")
         self._restart_rustdesk_service()
         rustdesk_id = self._rustdesk_get_id()
-        subprocess.run(["rustdesk", "--password", password], check=True, text=True)
-        _save_rustdesk_password(password)
-        self._restart_rustdesk_service()
+        self.configure_rustdesk_password(password)
 
         return RustDeskInstall(
             rustdesk_id=rustdesk_id,
             asset_name=str(asset["name"]),
         )
+
+    def rustdesk_installed(self) -> bool:
+        return shutil.which("rustdesk") is not None
+
+    def configure_rustdesk_password(self, password: str) -> None:
+        subprocess.run(["rustdesk", "--password", password], check=True, text=True)
+        _save_rustdesk_password(password)
+        self._restart_rustdesk_service()
 
     def connection_details(
         self,

@@ -16,6 +16,13 @@ TOTEM_TYPE_PROMPT = "Totem type"
 TOTEM_NAME_PROMPT = "Totem name"
 TOTEM_DESCRIPTION_PROMPT = "Totem description"
 TOTEM_LOCATION_PROMPT = "Totem location"
+RUSTDESK_INSTALL_PROMPT = "RustDesk is not installed. Install it now?"
+RUSTDESK_SET_PASSWORD_PROMPT = (
+    "RustDesk is installed but no unattended password is saved. "
+    "Set one for the backend?"
+)
+RUSTDESK_SKIP_WARNING = "The dashboard will not have remote access credentials."
+RUSTDESK_PASSWORD_PROMPT = "RustDesk password"
 TOTEM_TYPE_CHOICES = [
     Choice(id="webapp", label="Webapp"),
     Choice(id="video", label="Video"),
@@ -34,6 +41,8 @@ class TotemRegistrationRequest:
     totem_name: str
     description: str
     location: str
+    install_rustdesk: bool = False
+    rustdesk_password: str | None = None
 
 
 def default_config() -> TotemRegistrationConfig | None:
@@ -50,6 +59,7 @@ def default_config() -> TotemRegistrationConfig | None:
 class TotemRegistrar:
     def __init__(self, config: TotemRegistrationConfig | None = None) -> None:
         self._config = config
+        self._progress = None
 
     def config(self) -> TotemRegistrationConfig | None:
         return self._config if self._config is not None else default_config()
@@ -59,17 +69,22 @@ class TotemRegistrar:
         ui: UI,
         *,
         totem_type: str | None = None,
+        host: Host | None = None,
     ) -> TotemRegistrationRequest:
+        self._progress = ui.progress
         resolved_totem_type = totem_type or ui.choose(TOTEM_TYPE_PROMPT, list(TOTEM_TYPE_CHOICES))
         resolved_totem_name = _ask_required(ui, TOTEM_NAME_PROMPT)
         resolved_description = _ask_optional(ui, TOTEM_DESCRIPTION_PROMPT)
         resolved_location = _ask_optional(ui, TOTEM_LOCATION_PROMPT)
+        install_rustdesk, rustdesk_password = _ask_rustdesk_setup(ui, host)
 
         return TotemRegistrationRequest(
             totem_type=resolved_totem_type,
             totem_name=resolved_totem_name,
             description=resolved_description,
             location=resolved_location,
+            install_rustdesk=install_rustdesk,
+            rustdesk_password=rustdesk_password,
         )
 
     def register(self, host: Host, registration: TotemRegistrationRequest) -> str:
@@ -80,6 +95,14 @@ class TotemRegistrar:
         machine_name = host.machine_name().strip()
         if not machine_name:
             raise UserFacingError("Could not determine the machine name for this device.")
+
+        if registration.install_rustdesk:
+            password = registration.rustdesk_password
+            if not password:
+                raise UserFacingError("RustDesk password cannot be empty.")
+            host.install_rustdesk(password, progress=self._progress)
+        elif registration.rustdesk_password:
+            host.configure_rustdesk_password(registration.rustdesk_password)
 
         connection = host.connection_details()
         host.register_totem(
@@ -118,9 +141,33 @@ class TotemRegistrar:
         )
 
 
+def _ask_rustdesk_setup(ui: UI, host: Host | None) -> tuple[bool, str | None]:
+    if host is None:
+        return False, None
+    if host.rustdesk_installed():
+        if host.connection_details().rustdesk_password:
+            return False, None
+        if ui.confirm(RUSTDESK_SET_PASSWORD_PROMPT, default=True):
+            return False, _ask_required_secret(ui, RUSTDESK_PASSWORD_PROMPT)
+        ui.warn(RUSTDESK_SKIP_WARNING)
+        return False, None
+    if ui.confirm(RUSTDESK_INSTALL_PROMPT, default=True):
+        return True, _ask_required_secret(ui, RUSTDESK_PASSWORD_PROMPT)
+    ui.warn(RUSTDESK_SKIP_WARNING)
+    return False, None
+
+
 def _ask_required(ui: UI, prompt: str) -> str:
     while True:
         value = ui.prompt(prompt).strip()
+        if value:
+            return value
+        ui.warn(f"{prompt} cannot be empty.")
+
+
+def _ask_required_secret(ui: UI, prompt: str) -> str:
+    while True:
+        value = ui.secret(prompt).strip()
         if value:
             return value
         ui.warn(f"{prompt} cannot be empty.")

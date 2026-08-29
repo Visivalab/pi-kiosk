@@ -12,7 +12,11 @@ from pi_kiosk.linux import NeedSudoUser
 from pi_kiosk.steps.project_kiosk import NEXT_ACTION_PROMPT, TYPE_OF_PROJECT_PROMPT
 from pi_kiosk.steps.register_totem import REGISTER_TOTEM_PROMPT
 from pi_kiosk.terminal_ui import TerminalUI
-from pi_kiosk.totem_registration import TOTEM_TYPE_PROMPT
+from pi_kiosk.totem_registration import (
+    RUSTDESK_INSTALL_PROMPT,
+    RUSTDESK_PASSWORD_PROMPT,
+    TOTEM_TYPE_PROMPT,
+)
 
 
 class RootGuardTests(unittest.TestCase):
@@ -151,7 +155,7 @@ class CliTests(unittest.TestCase):
                 }
             ],
         )
-        self.assertEqual(host.connection_details_requests, [None])
+        self.assertEqual(host.connection_details_requests, [None, None])
         self.assertEqual(len(host.totem_status_reporter_installs), 1)
 
     def test_register_totem_command_installs_hourly_status_reporter(self):
@@ -201,7 +205,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(install.totem_id, "minipc-07")
         self.assertEqual(install.totem_type, "webapp")
         self.assertEqual(install.desktop_user, "kiosk")
-        self.assertEqual(host.connection_details_requests, [None])
+        self.assertEqual(host.connection_details_requests, [None, None])
 
     def test_register_totem_command_succeeds_when_first_status_run_fails(self):
         class HostWithStatusWarning(FakeHost):
@@ -252,7 +256,7 @@ class CliTests(unittest.TestCase):
         self.assertIn("first status run failed", stdout.getvalue().lower())
 
     def test_register_totem_command_allows_blank_description_and_location(self):
-        host = FakeHost(machine_name="minipc-07")
+        host = FakeHost(machine_name="minipc-07", saved_rustdesk_password="secret-pass")
         ui = FakeUI(
             answers={
                 TOTEM_TYPE_PROMPT: "video",
@@ -296,7 +300,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(host.totem_registration_requests[0]["location"], "")
 
     def test_register_totem_command_retries_empty_required_fields(self):
-        host = FakeHost(machine_name="minipc-07")
+        host = FakeHost(machine_name="minipc-07", saved_rustdesk_password="secret-pass")
         ui = FakeUI(
             answers={
                 TOTEM_TYPE_PROMPT: "video",
@@ -368,3 +372,108 @@ class CliTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("not configured", stderr.getvalue().lower())
         self.assertEqual(ui.prompts, [])
+
+    def test_register_totem_command_refuses_without_root(self):
+        stderr = io.StringIO()
+        ui = FakeUI(
+            answers={
+                TOTEM_TYPE_PROMPT: "webapp",
+                "Totem name": "Hall Screen",
+                "Totem description": "",
+                "Totem location": "",
+            }
+        )
+        with mock.patch.dict(
+            "os.environ",
+            {
+                "PI_KIOSK_REGISTER_TOTEM_URL": "https://dashboard.example.com/register-new-totem",
+                "PI_KIOSK_REGISTER_TOTEM_TOKEN": "totem-secret",
+            },
+            clear=False,
+        ):
+            code = main(
+                argv=["register-totem"],
+                host=FakeHost(root=False),
+                ui=ui,
+                stdout=io.StringIO(),
+                stderr=stderr,
+            )
+        self.assertEqual(code, 1)
+        self.assertIn("sudo", stderr.getvalue().lower())
+        self.assertEqual(ui.prompts, [])
+
+    def test_register_totem_command_installs_rustdesk_when_missing(self):
+        host = FakeHost(machine_name="minipc-07", rustdesk_present=False)
+        stdout = io.StringIO()
+        ui = FakeUI(
+            answers={
+                TOTEM_TYPE_PROMPT: "webapp",
+                "Totem name": "Hall Screen",
+                "Totem description": "",
+                "Totem location": "",
+                RUSTDESK_INSTALL_PROMPT: "yes",
+                RUSTDESK_PASSWORD_PROMPT: "secret-pass",
+            }
+        )
+
+        with mock.patch.dict(
+            "os.environ",
+            {
+                "PI_KIOSK_REGISTER_TOTEM_URL": "https://dashboard.example.com/register-new-totem",
+                "PI_KIOSK_REGISTER_TOTEM_TOKEN": "totem-secret",
+            },
+            clear=False,
+        ):
+            code = main(
+                argv=["register-totem"],
+                host=host,
+                ui=ui,
+                stdout=stdout,
+                stderr=io.StringIO(),
+            )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(host.rustdesk_passwords, ["secret-pass"])
+        self.assertEqual(
+            host.totem_registration_requests[0]["connection"],
+            TotemConnectionDetails(
+                rustdesk_id="123 456 789",
+                rustdesk_password="secret-pass",
+            ),
+        )
+        self.assertIn("registered", stdout.getvalue().lower())
+
+    def test_register_totem_command_can_skip_missing_rustdesk(self):
+        host = FakeHost(machine_name="minipc-07", rustdesk_present=False)
+        ui = FakeUI(
+            answers={
+                TOTEM_TYPE_PROMPT: "webapp",
+                "Totem name": "Hall Screen",
+                "Totem description": "",
+                "Totem location": "",
+                RUSTDESK_INSTALL_PROMPT: "no",
+            }
+        )
+
+        with mock.patch.dict(
+            "os.environ",
+            {
+                "PI_KIOSK_REGISTER_TOTEM_URL": "https://dashboard.example.com/register-new-totem",
+                "PI_KIOSK_REGISTER_TOTEM_TOKEN": "totem-secret",
+            },
+            clear=False,
+        ):
+            code = main(
+                argv=["register-totem"],
+                host=host,
+                ui=ui,
+                stdout=io.StringIO(),
+                stderr=io.StringIO(),
+            )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(host.rustdesk_passwords, [])
+        self.assertEqual(
+            host.totem_registration_requests[0]["connection"],
+            TotemConnectionDetails(rustdesk_id=None, rustdesk_password=None),
+        )

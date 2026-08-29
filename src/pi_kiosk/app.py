@@ -18,11 +18,12 @@ class NeedRoot(RuntimeError):
     """raspi-config and system files need root."""
 
 
-def default_steps():
+def default_steps(host: Host | None = None):
     rustdesk_step = RustDeskStep()
     project_step = ProjectKioskStep(prompt_for_next_action=False)
     register_step = RegisterTotemStep(
         project_step=project_step,
+        host=host,
     )
     return (
         RotationStep(),
@@ -40,7 +41,7 @@ class Wizard:
     def __init__(self, host: Host, ui: UI, steps=None) -> None:
         self.host = host
         self.ui = ui
-        self.steps = tuple(steps) if steps is not None else default_steps()
+        self.steps = tuple(steps) if steps is not None else default_steps(host)
 
     @classmethod
     def question_step_ids(cls) -> list[str]:
