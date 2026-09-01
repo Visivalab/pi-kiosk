@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from typing import Callable
 
 from pi_kiosk.choice import Choice
 from pi_kiosk.errors import UserFacingError
-from pi_kiosk.host import Host, TotemStatusReporterConfig
+from pi_kiosk.host import RustDeskHost, TotemRegistrationHost, TotemStatusReporterConfig
 from pi_kiosk.totem_status import derive_status_url
 from pi_kiosk.ui import UI
 
@@ -59,7 +60,6 @@ def default_config() -> TotemRegistrationConfig | None:
 class TotemRegistrar:
     def __init__(self, config: TotemRegistrationConfig | None = None) -> None:
         self._config = config
-        self._progress = None
 
     def config(self) -> TotemRegistrationConfig | None:
         return self._config if self._config is not None else default_config()
@@ -69,9 +69,8 @@ class TotemRegistrar:
         ui: UI,
         *,
         totem_type: str | None = None,
-        host: Host | None = None,
+        host: RustDeskHost | None = None,
     ) -> TotemRegistrationRequest:
-        self._progress = ui.progress
         resolved_totem_type = totem_type or ui.choose(TOTEM_TYPE_PROMPT, list(TOTEM_TYPE_CHOICES))
         resolved_totem_name = _ask_required(ui, TOTEM_NAME_PROMPT)
         resolved_description = _ask_optional(ui, TOTEM_DESCRIPTION_PROMPT)
@@ -87,7 +86,13 @@ class TotemRegistrar:
             rustdesk_password=rustdesk_password,
         )
 
-    def register(self, host: Host, registration: TotemRegistrationRequest) -> str:
+    def register(
+        self,
+        host: TotemRegistrationHost,
+        registration: TotemRegistrationRequest,
+        *,
+        progress: Callable[[str], None] | None = None,
+    ) -> str:
         config = self.config()
         if config is None:
             raise UserFacingError("Totem registration is not configured.")
@@ -100,7 +105,7 @@ class TotemRegistrar:
             password = registration.rustdesk_password
             if not password:
                 raise UserFacingError("RustDesk password cannot be empty.")
-            host.install_rustdesk(password, progress=self._progress)
+            host.install_rustdesk(password, progress=progress)
         elif registration.rustdesk_password:
             host.configure_rustdesk_password(registration.rustdesk_password)
 
@@ -141,7 +146,7 @@ class TotemRegistrar:
         )
 
 
-def _ask_rustdesk_setup(ui: UI, host: Host | None) -> tuple[bool, str | None]:
+def _ask_rustdesk_setup(ui: UI, host: RustDeskHost | None) -> tuple[bool, str | None]:
     if host is None:
         return False, None
     if host.rustdesk_installed():

@@ -1,9 +1,12 @@
 import unittest
 
+from tests.fake_ui import FakeUI
 from tests.fakes import FakeHost
 
+from pi_kiosk.display import DisplayConfig
 from pi_kiosk.steps.rotation import RotationStep
 from pi_kiosk.steps.touch import BEGIN, TouchStep, upsert_touch_block
+from pi_kiosk.wizard_context import WizardContext
 
 
 class TouchStepTests(unittest.TestCase):
@@ -64,6 +67,18 @@ class TouchStepTests(unittest.TestCase):
         self.assertIn("  <keyboard />", content)
         self.assertEqual(content.count(BEGIN), 1)
         self.assertIn("<calibrationMatrix>0 -1 1 1 0 0</calibrationMatrix>", content)
+
+    def test_prefers_display_config_from_wizard_context(self):
+        host = FakeHost(touchscreen=True)
+        context = WizardContext(host=host, ui=FakeUI())
+        context.state["display_config"] = DisplayConfig(output="DSI-1", transform="270")
+
+        report = TouchStep().apply(host, context=context)
+
+        content = host.files["/home/pi/.config/labwc/rc.xml"]
+        self.assertIn('<touch mapToOutput="DSI-1" />', content)
+        self.assertIn("<calibrationMatrix>0 1 0 -1 0 1</calibrationMatrix>", content)
+        self.assertIn("clockwise", report.lower())
 
 
 class UpsertTouchBlockTests(unittest.TestCase):

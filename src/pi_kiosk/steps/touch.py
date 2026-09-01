@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+from pi_kiosk.display import DISPLAY_CONFIG_KEY, DisplayConfig
 from pi_kiosk.files import normalize_labwc_rc_xml, read_or_empty
-from pi_kiosk.host import Host
+from pi_kiosk.host import TouchHost
 from pi_kiosk.steps.rotation import BEGIN as ROTATION_BEGIN
 from pi_kiosk.steps.rotation import END as ROTATION_END
 from pi_kiosk.ui import UI
+
+if TYPE_CHECKING:
+    from pi_kiosk.wizard_context import WizardContext
 
 BEGIN = "<!-- pi-kiosk-setup:touch-begin -->"
 END = "<!-- pi-kiosk-setup:touch-end -->"
@@ -28,14 +34,21 @@ class TouchStep:
     title = "Touchscreen mapping"
     choices = ()
 
-    def ask(self, ui: UI) -> None:
+    def ask(self, ui: UI, context: WizardContext | None = None) -> None:
         return None
 
-    def apply(self, host: Host, answer=None) -> str:
+    def apply(
+        self,
+        host: TouchHost,
+        answer=None,
+        context: WizardContext | None = None,
+    ) -> str:
         if not host.touchscreen_present():
             return "Done: no touch screen was detected. Nothing was changed."
 
-        output, transform = _read_rotation_state(host)
+        display_config = _display_config(host, context)
+        output = display_config.output
+        transform = display_config.transform
         if transform == "normal":
             return (
                 "Done: touch screen detected. No mapping needed because the screen is not rotated."
@@ -56,7 +69,20 @@ class TouchStep:
         )
 
 
-def _read_rotation_state(host: Host) -> tuple[str, str]:
+def _display_config(
+    host: TouchHost,
+    context: WizardContext | None,
+) -> DisplayConfig:
+    if context is not None:
+        candidate = context.state.get(DISPLAY_CONFIG_KEY)
+        if isinstance(candidate, DisplayConfig):
+            return candidate
+
+    output, transform = _read_rotation_state(host)
+    return DisplayConfig(output=output, transform=transform)
+
+
+def _read_rotation_state(host: TouchHost) -> tuple[str, str]:
     path = f"{host.home()}/.config/labwc/autostart"
     content = read_or_empty(host, path)
     if ROTATION_BEGIN not in content or ROTATION_END not in content:

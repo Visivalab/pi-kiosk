@@ -8,6 +8,7 @@ from pi_kiosk.steps.rotation import RotationStep
 from pi_kiosk.steps.rustdesk import RustDeskStep
 from pi_kiosk.steps.touch import TouchStep
 from pi_kiosk.ui import UI
+from pi_kiosk.wizard_context import WizardContext
 
 
 class NotARaspberryPi(RuntimeError):
@@ -19,21 +20,15 @@ class NeedRoot(RuntimeError):
 
 
 def default_steps(host: Host | None = None):
-    rustdesk_step = RustDeskStep()
-    project_step = ProjectKioskStep(prompt_for_next_action=False)
-    register_step = RegisterTotemStep(
-        project_step=project_step,
-        host=host,
-    )
     return (
         RotationStep(),
         TouchStep(),
         NoSleepStep(),
         AutologinStep(),
-        rustdesk_step,
-        project_step,
-        register_step,
-        FinalActionStep(project_step),
+        RustDeskStep(),
+        ProjectKioskStep(prompt_for_next_action=False),
+        RegisterTotemStep(),
+        FinalActionStep(),
     )
 
 
@@ -61,10 +56,13 @@ class Wizard:
             raise NeedRoot("Run this tool with sudo. Nothing was changed.")
         self.host.user()
 
+        context = WizardContext(host=self.host, ui=self.ui)
         reports: list[str] = []
         for step in self.steps:
-            answer = step.ask(self.ui)
-            report = step.apply(self.host, answer)
+            answer = step.ask(self.ui, context)
+            context.record_answer(step.id, answer)
+            report = step.apply(self.host, answer, context)
+            context.record_report(report)
             self.ui.info(report)
             reports.append(report)
         return reports

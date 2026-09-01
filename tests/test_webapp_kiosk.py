@@ -16,6 +16,7 @@ from pi_kiosk.steps.webapp_kiosk import (
     launcher_path,
     normalize_source,
 )
+from pi_kiosk.wizard_context import WizardContext
 
 
 class AskWebAppKioskStepTests(unittest.TestCase):
@@ -28,16 +29,18 @@ class AskWebAppKioskStepTests(unittest.TestCase):
     def test_accepts_owner_repo_input(self):
         ui = FakeUI(answers={"GitHub repo": "Visivalab/demo-app"})
 
-        answer = WebAppKioskStep().ask(ui)
+        answer = WebAppKioskStep(prompt_for_next_action=False).ask(ui)
 
-        self.assertEqual(answer, WebAppSource(repo_ref="Visivalab/demo-app"))
+        self.assertEqual(answer.source, WebAppSource(repo_ref="Visivalab/demo-app"))
+        self.assertIsNone(answer.next_action)
 
     def test_normalizes_full_github_url(self):
         ui = FakeUI(answers={"GitHub repo": "https://github.com/Visivalab/demo-app/"})
 
-        answer = WebAppKioskStep().ask(ui)
+        answer = WebAppKioskStep(prompt_for_next_action=False).ask(ui)
 
-        self.assertEqual(answer, WebAppSource(repo_ref="Visivalab/demo-app"))
+        self.assertEqual(answer.source, WebAppSource(repo_ref="Visivalab/demo-app"))
+        self.assertIsNone(answer.next_action)
 
     def test_normalizes_tree_url_with_subdirectory(self):
         source = normalize_source(
@@ -64,13 +67,53 @@ class AskWebAppKioskStepTests(unittest.TestCase):
 
         ui = RetryUI()
 
-        answer = WebAppKioskStep().ask(ui)
+        answer = WebAppKioskStep(prompt_for_next_action=False).ask(ui)
 
-        self.assertEqual(answer, WebAppSource(repo_ref="Visivalab/demo-app"))
+        self.assertEqual(answer.source, WebAppSource(repo_ref="Visivalab/demo-app"))
         self.assertTrue(any("owner/repo" in message for message in ui.messages))
 
 
 class ApplyWebAppKioskStepTests(unittest.TestCase):
+    def test_apply_does_not_depend_on_mutable_instance_state_from_ask(self):
+        host = FakeHost()
+        request = WebAppKioskStep().ask(
+            FakeUI(
+                answers={
+                    "GitHub repo": "Visivalab/demo-app",
+                    NEXT_ACTION_PROMPT: "simulate",
+                }
+            )
+        )
+
+        report = WebAppKioskStep().apply(
+            host,
+            request,
+            WizardContext(
+                host=host,
+                ui=FakeUI(
+                    answers={
+                        "GitHub repo": "Visivalab/demo-app",
+                        NEXT_ACTION_PROMPT: "simulate",
+                    }
+                ),
+            ),
+        )
+
+        self.assertEqual(
+            host.launched_kiosk_paths,
+            [launcher_path(host.home())],
+        )
+        self.assertIn("simulated autorun", report.lower())
+        self.assertEqual(
+            host.webapp_progress_messages,
+            [
+                "Resolving GitHub repo",
+                "Downloading webapp archive",
+                "Extracting webapp files",
+                "Deploying build output",
+            ],
+        )
+
     def test_simulates_autorun_when_user_chooses_test_option(self):
         host = FakeHost()
         ui = FakeUI(
@@ -82,7 +125,7 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
         step = WebAppKioskStep()
         source = step.ask(ui)
 
-        report = step.apply(host, source)
+        report = step.apply(host, source, WizardContext(host=host, ui=ui))
 
         self.assertEqual(
             host.launched_kiosk_paths,
@@ -106,7 +149,7 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
         step = WebAppKioskStep()
         source = step.ask(ui)
 
-        report = step.apply(host, source)
+        report = step.apply(host, source, WizardContext(host=host, ui=ui))
 
         self.assertEqual(host.launched_kiosk_paths, [])
         self.assertEqual(host.launched_server_paths, [])
@@ -126,7 +169,7 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
         step = WebAppKioskStep()
         source = step.ask(ui)
 
-        report = step.apply(host, source)
+        report = step.apply(host, source, WizardContext(host=host, ui=ui))
 
         self.assertEqual(host.launched_kiosk_paths, [])
         self.assertEqual(host.launched_server_paths, [launcher_path(host.home())])
@@ -144,9 +187,14 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
             )
         )
         step = WebAppKioskStep()
-        step.ask(FakeUI(answers={"GitHub repo": "Visivalab/demo-app", NEXT_ACTION_PROMPT: "close"}))
+        ui = FakeUI(answers={"GitHub repo": "Visivalab/demo-app", NEXT_ACTION_PROMPT: "close"})
+        step.ask(ui)
 
-        report = step.apply(host, WebAppSource(repo_ref="Visivalab/demo-app"))
+        report = step.apply(
+            host,
+            WebAppSource(repo_ref="Visivalab/demo-app"),
+            WizardContext(host=host, ui=ui),
+        )
 
         self.assertEqual(
             host.webapp_deploy_requests,

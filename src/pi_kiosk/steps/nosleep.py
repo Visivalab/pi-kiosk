@@ -1,6 +1,13 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from pi_kiosk.files import read_or_empty, upsert_marked_block
-from pi_kiosk.host import Host
+from pi_kiosk.host import NoSleepHost
 from pi_kiosk.ui import UI
+
+if TYPE_CHECKING:
+    from pi_kiosk.wizard_context import WizardContext
 
 BEGIN = "# pi-kiosk-setup:nosleep-begin"
 END = "# pi-kiosk-setup:nosleep-end"
@@ -12,10 +19,15 @@ class NoSleepStep:
     title = "Keep the display awake"
     choices = ()
 
-    def ask(self, ui: UI) -> None:
+    def ask(self, ui: UI, context: WizardContext | None = None) -> None:
         return None
 
-    def apply(self, host: Host, answer=None) -> str:
+    def apply(
+        self,
+        host: NoSleepHost,
+        answer=None,
+        context: WizardContext | None = None,
+    ) -> str:
         host.run(["raspi-config", "nonint", "do_blanking", "1"], check=True)
 
         path = f"{host.home()}/.config/labwc/autostart"

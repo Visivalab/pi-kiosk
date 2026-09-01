@@ -6,6 +6,7 @@ from tests.fakes import FakeHost
 from pi_kiosk.host import VideoSource, WebAppSource
 from pi_kiosk.steps.project_kiosk import NEXT_ACTION_PROMPT, ProjectKioskStep, TYPE_OF_PROJECT_PROMPT
 from pi_kiosk.steps.video_kiosk import VIDEO_NEXT_ACTION_PROMPT
+from pi_kiosk.wizard_context import WizardContext
 
 
 class AskProjectKioskStepTests(unittest.TestCase):
@@ -17,7 +18,7 @@ class AskProjectKioskStepTests(unittest.TestCase):
             }
         )
 
-        answer = ProjectKioskStep().ask(ui)
+        answer = ProjectKioskStep(prompt_for_next_action=False).ask(ui)
 
         self.assertEqual(answer.project_type, "webapp")
         self.assertEqual(answer.source, WebAppSource(repo_ref="Visivalab/demo-app"))
@@ -31,7 +32,7 @@ class AskProjectKioskStepTests(unittest.TestCase):
             }
         )
 
-        answer = ProjectKioskStep().ask(ui)
+        answer = ProjectKioskStep(prompt_for_next_action=False).ask(ui)
 
         self.assertEqual(answer.project_type, "video")
         self.assertEqual(
@@ -57,7 +58,7 @@ class ApplyProjectKioskStepTests(unittest.TestCase):
         step = ProjectKioskStep()
         answer = step.ask(ui)
 
-        report = step.apply(host, answer)
+        report = step.apply(host, answer, WizardContext(host=host, ui=ui))
 
         self.assertEqual(
             host.webapp_deploy_requests,
@@ -78,7 +79,7 @@ class ApplyProjectKioskStepTests(unittest.TestCase):
         step = ProjectKioskStep()
         answer = step.ask(ui)
 
-        report = step.apply(host, answer)
+        report = step.apply(host, answer, WizardContext(host=host, ui=ui))
 
         self.assertEqual(host.webapp_deploy_requests, [])
         self.assertEqual(

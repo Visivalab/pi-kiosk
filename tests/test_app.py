@@ -6,14 +6,18 @@ from tests.fakes import FakeHost
 from pi_kiosk.app import NotARaspberryPi, Wizard
 from pi_kiosk.host import TotemConnectionDetails, WebAppSource
 from pi_kiosk.steps.kiosk_common import NEXT_ACTION_PROMPT
+from pi_kiosk.steps.final_action import FinalActionStep
 from pi_kiosk.steps.project_kiosk import ProjectKioskStep, TYPE_OF_PROJECT_PROMPT
 from pi_kiosk.steps.register_totem import REGISTER_TOTEM_PROMPT, RegisterTotemStep
 from pi_kiosk.steps.rotation import RotationStep
 from pi_kiosk.steps.rustdesk import RustDeskStep
 from pi_kiosk.totem_registration import (
+    REGISTER_TOTEM_TOKEN,
+    REGISTER_TOTEM_URL,
     RUSTDESK_INSTALL_PROMPT,
     RUSTDESK_SET_PASSWORD_PROMPT,
 )
+from pi_kiosk.wizard_context import WizardContext
 
 
 class WizardTests(unittest.TestCase):
@@ -117,8 +121,11 @@ class WizardTests(unittest.TestCase):
 
         Wizard(host, ui).run()
 
+        request = host.totem_registration_requests[0]
+        self.assertEqual(request["endpoint_url"], REGISTER_TOTEM_URL)
+        self.assertEqual(request["token"], REGISTER_TOTEM_TOKEN)
         self.assertEqual(
-            host.totem_registration_requests[0]["connection"],
+            request["connection"],
             TotemConnectionDetails(
                 rustdesk_id="123 456 789",
                 rustdesk_password="secret-pass",
@@ -155,3 +162,56 @@ class RegisterTotemStepTests(unittest.TestCase):
             ui.confirm_calls,
             [(REGISTER_TOTEM_PROMPT, True)],
         )
+
+    def test_register_prompt_uses_project_type_from_wizard_context(self):
+        host = FakeHost()
+        ui = FakeUI(
+            answers={
+                REGISTER_TOTEM_PROMPT: "yes",
+                "Totem name": "Hall Screen",
+                "Totem description": "",
+                "Totem location": "",
+                RUSTDESK_SET_PASSWORD_PROMPT: "yes",
+                "RustDesk password": "secret-pass",
+            }
+        )
+        context = WizardContext(host=host, ui=ui)
+        context.record_answer(
+            ProjectKioskStep.id,
+            ProjectKioskStep(prompt_for_next_action=False).ask(
+                FakeUI(
+                    answers={
+                        TYPE_OF_PROJECT_PROMPT: "webapp",
+                        "GitHub repo": "Visivalab/demo-app",
+                    }
+                )
+            ),
+        )
+
+        answer = RegisterTotemStep().ask(ui, context)
+
+        self.assertEqual(answer.totem_type, "webapp")
+
+
+class FinalActionStepTests(unittest.TestCase):
+    def test_reads_next_action_from_wizard_context(self):
+        host = FakeHost()
+        ui = FakeUI(answers={NEXT_ACTION_PROMPT: "simulate"})
+        context = WizardContext(host=host, ui=ui)
+        context.record_answer(
+            ProjectKioskStep.id,
+            ProjectKioskStep(prompt_for_next_action=False).ask(
+                FakeUI(
+                    answers={
+                        TYPE_OF_PROJECT_PROMPT: "webapp",
+                        "GitHub repo": "Visivalab/demo-app",
+                    }
+                )
+            ),
+        )
+
+        action = FinalActionStep().ask(ui, context)
+        report = FinalActionStep().apply(host, action, context)
+
+        self.assertEqual(action, "simulate")
+        self.assertIn("simulated autorun", report.lower())

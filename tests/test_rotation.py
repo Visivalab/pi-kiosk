@@ -1,12 +1,15 @@
 import unittest
 
+from tests.fake_ui import FakeUI
 from tests.fakes import FakeHost
 
+from pi_kiosk.display import DisplayConfig
 from pi_kiosk.steps.rotation import (
     ROTATION_CHOICES,
     RotationStep,
     transform_for,
 )
+from pi_kiosk.wizard_context import WizardContext
 
 
 class TransformForRotationTests(unittest.TestCase):
@@ -78,6 +81,17 @@ class ApplyRotationTests(unittest.TestCase):
         host = FakeHost(desktop_session_returncode=1)
         report = RotationStep().apply(host, "clockwise")
         self.assertIn("next graphical login", report.lower())
+
+    def test_records_display_config_in_wizard_context(self):
+        host = FakeHost(wayland_output="DSI-1")
+        context = WizardContext(host=host, ui=FakeUI())
+
+        RotationStep().apply(host, "counterclockwise", context)
+
+        self.assertEqual(
+            context.state["display_config"],
+            DisplayConfig(output="DSI-1", transform="90"),
+        )
 
 
 if __name__ == "__main__":

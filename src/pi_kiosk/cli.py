@@ -70,7 +70,7 @@ def _run_command(
         if registrar.config() is None:
             raise UserFacingError("Totem registration is not configured.")
         registration = registrar.ask(ui, host=host)
-        report = registrar.register(host, registration)
+        report = registrar.register(host, registration, progress=ui.progress)
     except KeyboardInterrupt:
         return 130
     except NotARaspberryPi as exc:

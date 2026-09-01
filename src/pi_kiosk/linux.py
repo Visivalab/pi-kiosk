@@ -46,8 +46,257 @@ class NeedSudoUser(RuntimeError):
 RUSTDESK_CREDENTIALS_PATH = Path("/etc/pi-kiosk/rustdesk.json")
 
 
+class WebAppDeployer:
+    def __init__(self, host: LinuxHost) -> None:
+        self._host = host
+
+    def deploy(
+        self,
+        source: WebAppSource,
+        artifact_dirs: tuple[str, ...],
+        progress: Callable[[str], None] | None = None,
+    ) -> WebAppDeployment:
+        self._host._report_progress(progress, "Resolving GitHub repo")
+        app_root = Path(self._host.home()) / ".local" / "share" / "pi-kiosk" / "webapp"
+        current_dir = app_root / "current"
+        app_root.mkdir(parents=True, exist_ok=True)
+        self._host._own_within_home(app_root)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            temp_root = Path(tmp)
+            self._host._report_progress(progress, "Downloading webapp archive")
+            extracted_root = self._host._download_github_archive(source.repo_ref, temp_root)
+            self._host._report_progress(progress, "Extracting webapp files")
+            source_root = self._host._resolve_source_root(extracted_root, source)
+            artifact_path = self._host._find_artifact_dir(source_root, artifact_dirs)
+            if artifact_path is None:
+                names = " or ".join(f"{name}/" for name in artifact_dirs)
+                raise UserFacingError(
+                    f"Repository {source.repo_ref} did not contain {names} "
+                    f"in {source.subdir or 'the repo root'}. "
+                    "Commit the built webapp and run the wizard again."
+                )
+            stage_dir = app_root / "next"
+            if stage_dir.exists():
+                shutil.rmtree(stage_dir)
+            stage_dir.mkdir(parents=True, exist_ok=True)
+            self._host._report_progress(progress, "Deploying build output")
+            self._host._copy_directory_contents(artifact_path, stage_dir)
+            if current_dir.exists():
+                shutil.rmtree(current_dir)
+            stage_dir.replace(current_dir)
+
+        self._host._own_tree(current_dir)
+        return WebAppDeployment(
+            repo_ref=source.repo_ref,
+            app_dir=str(current_dir),
+            artifact_dir=artifact_path.name,
+        )
+
+
+class VideoDeployer:
+    def __init__(self, host: LinuxHost) -> None:
+        self._host = host
+
+    def deploy(
+        self,
+        source: VideoSource,
+        progress: Callable[[str], None] | None = None,
+    ) -> VideoDeployment:
+        video_root = Path(self._host.home()) / ".local" / "share" / "pi-kiosk" / "video"
+        current_dir = video_root / "current"
+        video_root.mkdir(parents=True, exist_ok=True)
+        self._host._own_within_home(video_root)
+
+        with tempfile.TemporaryDirectory():
+            self._host._report_progress(progress, "Preparing Dropbox download")
+            file_name = _video_file_name(source.download_url)
+            stage_dir = video_root / "next"
+            if stage_dir.exists():
+                shutil.rmtree(stage_dir)
+            stage_dir.mkdir(parents=True, exist_ok=True)
+
+            video_path = self._host._download_video_file(
+                source.download_url,
+                stage_dir,
+                default_file_name=file_name,
+                progress=progress,
+            )
+            if video_path.stat().st_size == 0:
+                raise UserFacingError("Downloaded video file was empty.")
+
+            self._host._report_progress(progress, "Deploying video file")
+            if current_dir.exists():
+                shutil.rmtree(current_dir)
+            stage_dir.replace(current_dir)
+
+        self._host._own_tree(current_dir)
+        deployed_path = current_dir / video_path.name
+        return VideoDeployment(
+            video_path=str(deployed_path),
+            file_name=video_path.name,
+        )
+
+
+class RustDeskService:
+    def __init__(self, host: LinuxHost) -> None:
+        self._host = host
+
+    def install(
+        self,
+        password: str,
+        progress: Callable[[str], None] | None = None,
+    ) -> RustDeskInstall:
+        self._host._report_progress(progress, "Resolving latest RustDesk release")
+        release = self._host._read_json(
+            "https://api.github.com/repos/rustdesk/rustdesk/releases/latest"
+        )
+        asset = _select_rustdesk_deb_asset(release, self._host._debian_architecture())
+
+        with tempfile.TemporaryDirectory() as tmp:
+            temp_root = Path(tmp)
+            package_path = temp_root / asset["name"]
+
+            self._host._report_progress(progress, "Downloading RustDesk package")
+            self._host._download_file(
+                str(asset["browser_download_url"]),
+                package_path,
+                description="RustDesk package",
+            )
+
+            self._host._report_progress(progress, "Installing RustDesk package")
+            subprocess.run(
+                ["apt-get", "install", "-fy", str(package_path)],
+                check=True,
+                text=True,
+            )
+
+        self._host._report_progress(progress, "Configuring RustDesk access")
+        self._host._restart_rustdesk_service()
+        rustdesk_id = self._host._rustdesk_get_id()
+        self.configure_password(password)
+
+        return RustDeskInstall(
+            rustdesk_id=rustdesk_id,
+            asset_name=str(asset["name"]),
+        )
+
+    def installed(self) -> bool:
+        return shutil.which("rustdesk") is not None
+
+    def configure_password(self, password: str) -> None:
+        subprocess.run(["rustdesk", "--password", password], check=True, text=True)
+        _save_rustdesk_password(password)
+        self._host._restart_rustdesk_service()
+
+    def connection_details(
+        self,
+        rustdesk_password: str | None = None,
+    ) -> TotemConnectionDetails:
+        return TotemConnectionDetails(
+            rustdesk_id=_rustdesk_id(),
+            rustdesk_password=(
+                rustdesk_password
+                if rustdesk_password is not None
+                else _saved_rustdesk_password()
+            ),
+        )
+
+
+class TotemRegistrationClient:
+    def register(
+        self,
+        endpoint_url: str,
+        token: str,
+        machine_name: str,
+        totem_type: str,
+        totem_name: str,
+        description: str,
+        location: str,
+        connection: TotemConnectionDetails,
+    ) -> None:
+        payload = {
+            "totem_id": machine_name,
+            "totemType": totem_type,
+            "machineName": machine_name,
+            "machineId": _machine_id(),
+            "name": totem_name,
+            "description": description,
+            "location": location,
+            "rustdeskId": connection.rustdesk_id,
+            "rustdeskPassword": connection.rustdesk_password,
+            "registeredAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        }
+        req = request.Request(
+            endpoint_url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with request.urlopen(req, timeout=5) as response:
+                status = response.getcode()
+        except error.HTTPError as exc:
+            detail = _http_error_detail(exc)
+            if detail:
+                raise UserFacingError(
+                    f"Totem registration failed with HTTP {exc.code}: {detail}."
+                ) from exc
+            raise UserFacingError(f"Totem registration failed with HTTP {exc.code}.") from exc
+        except error.URLError as exc:
+            raise UserFacingError(f"Totem registration failed: {exc.reason}.") from exc
+
+        if status < 200 or status >= 300:
+            raise UserFacingError(f"Totem registration failed with HTTP {status}.")
+
+
+class TotemStatusReporterInstaller:
+    def __init__(self, host: LinuxHost) -> None:
+        self._host = host
+
+    def install(
+        self,
+        config: TotemStatusReporterConfig,
+    ) -> str | None:
+        script_path = status_script_path()
+        config_path = status_config_path()
+        service_path = status_service_path()
+        timer_path = status_timer_path()
+
+        script_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        service_path.parent.mkdir(parents=True, exist_ok=True)
+
+        script_path.write_text(reporter_script(), encoding="utf-8")
+        script_path.chmod(0o755)
+        config_path.write_text(reporter_config_json(config), encoding="utf-8")
+        service_path.write_text(service_unit(), encoding="utf-8")
+        timer_path.write_text(timer_unit(), encoding="utf-8")
+
+        self._host.run(["systemctl", "daemon-reload"])
+        self._host.run(["systemctl", "enable", "--now", timer_path.name])
+        result = self._host.run(["systemctl", "start", service_path.name], check=False)
+        if result.returncode != 0:
+            return (
+                "Hourly status reporter was installed, but the first status run failed. "
+                f"The timer remains enabled. Check `systemctl status {service_path.name}` "
+                f"and `journalctl -u {service_path.name} -n 50 --no-pager`."
+            )
+        return None
+
+
 class LinuxHost:
     """Talks to the real machine. Keep this thin; logic lives in the steps."""
+
+    def __init__(self) -> None:
+        self._webapp_deployer = WebAppDeployer(self)
+        self._video_deployer = VideoDeployer(self)
+        self._rustdesk_service = RustDeskService(self)
+        self._totem_registration = TotemRegistrationClient()
+        self._status_reporter_installer = TotemStatusReporterInstaller(self)
 
     def home(self) -> str:
         return str(Path(pwd.getpwnam(self.user()).pw_dir))
@@ -156,42 +405,7 @@ class LinuxHost:
         artifact_dirs: tuple[str, ...],
         progress: Callable[[str], None] | None = None,
     ) -> WebAppDeployment:
-        self._report_progress(progress, "Resolving GitHub repo")
-        app_root = Path(self.home()) / ".local" / "share" / "pi-kiosk" / "webapp"
-        current_dir = app_root / "current"
-        app_root.mkdir(parents=True, exist_ok=True)
-        self._own_within_home(app_root)
-
-        with tempfile.TemporaryDirectory() as tmp:
-            temp_root = Path(tmp)
-            self._report_progress(progress, "Downloading webapp archive")
-            extracted_root = self._download_github_archive(source.repo_ref, temp_root)
-            self._report_progress(progress, "Extracting webapp files")
-            source_root = self._resolve_source_root(extracted_root, source)
-            artifact_path = self._find_artifact_dir(source_root, artifact_dirs)
-            if artifact_path is None:
-                names = " or ".join(f"{name}/" for name in artifact_dirs)
-                raise UserFacingError(
-                    f"Repository {source.repo_ref} did not contain {names} "
-                    f"in {source.subdir or 'the repo root'}. "
-                    "Commit the built webapp and run the wizard again."
-                )
-            stage_dir = app_root / "next"
-            if stage_dir.exists():
-                shutil.rmtree(stage_dir)
-            stage_dir.mkdir(parents=True, exist_ok=True)
-            self._report_progress(progress, "Deploying build output")
-            self._copy_directory_contents(artifact_path, stage_dir)
-            if current_dir.exists():
-                shutil.rmtree(current_dir)
-            stage_dir.replace(current_dir)
-
-        self._own_tree(current_dir)
-        return WebAppDeployment(
-            repo_ref=source.repo_ref,
-            app_dir=str(current_dir),
-            artifact_dir=artifact_path.name,
-        )
+        return self._webapp_deployer.deploy(source, artifact_dirs, progress)
 
     def chromium_command(self) -> str | None:
         for candidate in ("chromium-browser", "chromium"):
@@ -205,39 +419,7 @@ class LinuxHost:
         source: VideoSource,
         progress: Callable[[str], None] | None = None,
     ) -> VideoDeployment:
-        video_root = Path(self.home()) / ".local" / "share" / "pi-kiosk" / "video"
-        current_dir = video_root / "current"
-        video_root.mkdir(parents=True, exist_ok=True)
-        self._own_within_home(video_root)
-
-        with tempfile.TemporaryDirectory():
-            self._report_progress(progress, "Preparing Dropbox download")
-            file_name = _video_file_name(source.download_url)
-            stage_dir = video_root / "next"
-            if stage_dir.exists():
-                shutil.rmtree(stage_dir)
-            stage_dir.mkdir(parents=True, exist_ok=True)
-
-            video_path = self._download_video_file(
-                source.download_url,
-                stage_dir,
-                default_file_name=file_name,
-                progress=progress,
-            )
-            if video_path.stat().st_size == 0:
-                raise UserFacingError("Downloaded video file was empty.")
-
-            self._report_progress(progress, "Deploying video file")
-            if current_dir.exists():
-                shutil.rmtree(current_dir)
-            stage_dir.replace(current_dir)
-
-        self._own_tree(current_dir)
-        deployed_path = current_dir / video_path.name
-        return VideoDeployment(
-            video_path=str(deployed_path),
-            file_name=video_path.name,
-        )
+        return self._video_deployer.deploy(source, progress)
 
     def mpv_command(self) -> str | None:
         return shutil.which("mpv")
@@ -300,58 +482,19 @@ class LinuxHost:
         password: str,
         progress: Callable[[str], None] | None = None,
     ) -> RustDeskInstall:
-        self._report_progress(progress, "Resolving latest RustDesk release")
-        release = self._read_json("https://api.github.com/repos/rustdesk/rustdesk/releases/latest")
-        asset = _select_rustdesk_deb_asset(release, self._debian_architecture())
-
-        with tempfile.TemporaryDirectory() as tmp:
-            temp_root = Path(tmp)
-            package_path = temp_root / asset["name"]
-
-            self._report_progress(progress, "Downloading RustDesk package")
-            self._download_file(
-                str(asset["browser_download_url"]),
-                package_path,
-                description="RustDesk package",
-            )
-
-            self._report_progress(progress, "Installing RustDesk package")
-            subprocess.run(
-                ["apt-get", "install", "-fy", str(package_path)],
-                check=True,
-                text=True,
-            )
-
-        self._report_progress(progress, "Configuring RustDesk access")
-        self._restart_rustdesk_service()
-        rustdesk_id = self._rustdesk_get_id()
-        self.configure_rustdesk_password(password)
-
-        return RustDeskInstall(
-            rustdesk_id=rustdesk_id,
-            asset_name=str(asset["name"]),
-        )
+        return self._rustdesk_service.install(password, progress)
 
     def rustdesk_installed(self) -> bool:
-        return shutil.which("rustdesk") is not None
+        return self._rustdesk_service.installed()
 
     def configure_rustdesk_password(self, password: str) -> None:
-        subprocess.run(["rustdesk", "--password", password], check=True, text=True)
-        _save_rustdesk_password(password)
-        self._restart_rustdesk_service()
+        self._rustdesk_service.configure_password(password)
 
     def connection_details(
         self,
         rustdesk_password: str | None = None,
     ) -> TotemConnectionDetails:
-        return TotemConnectionDetails(
-            rustdesk_id=_rustdesk_id(),
-            rustdesk_password=(
-                rustdesk_password
-                if rustdesk_password is not None
-                else _saved_rustdesk_password()
-            ),
-        )
+        return self._rustdesk_service.connection_details(rustdesk_password)
 
     def register_totem(
         self,
@@ -364,72 +507,22 @@ class LinuxHost:
         location: str,
         connection: TotemConnectionDetails,
     ) -> None:
-        payload = {
-            "totem_id": machine_name,
-            "totemType": totem_type,
-            "machineName": machine_name,
-            "machineId": _machine_id(),
-            "name": totem_name,
-            "description": description,
-            "location": location,
-            "rustdeskId": connection.rustdesk_id,
-            "rustdeskPassword": connection.rustdesk_password,
-            "registeredAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-        }
-        req = request.Request(
+        self._totem_registration.register(
             endpoint_url,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Content-Type": "application/json",
-            },
-            method="POST",
+            token,
+            machine_name,
+            totem_type,
+            totem_name,
+            description,
+            location,
+            connection,
         )
-        try:
-            with request.urlopen(req, timeout=5) as response:
-                status = response.getcode()
-        except error.HTTPError as exc:
-            detail = _http_error_detail(exc)
-            if detail:
-                raise UserFacingError(
-                    f"Totem registration failed with HTTP {exc.code}: {detail}."
-                ) from exc
-            raise UserFacingError(f"Totem registration failed with HTTP {exc.code}.") from exc
-        except error.URLError as exc:
-            raise UserFacingError(f"Totem registration failed: {exc.reason}.") from exc
-
-        if status < 200 or status >= 300:
-            raise UserFacingError(f"Totem registration failed with HTTP {status}.")
 
     def install_totem_status_reporter(
         self,
         config: TotemStatusReporterConfig,
     ) -> str | None:
-        script_path = status_script_path()
-        config_path = status_config_path()
-        service_path = status_service_path()
-        timer_path = status_timer_path()
-
-        script_path.parent.mkdir(parents=True, exist_ok=True)
-        config_path.parent.mkdir(parents=True, exist_ok=True)
-        service_path.parent.mkdir(parents=True, exist_ok=True)
-
-        script_path.write_text(reporter_script(), encoding="utf-8")
-        script_path.chmod(0o755)
-        config_path.write_text(reporter_config_json(config), encoding="utf-8")
-        service_path.write_text(service_unit(), encoding="utf-8")
-        timer_path.write_text(timer_unit(), encoding="utf-8")
-
-        self.run(["systemctl", "daemon-reload"])
-        self.run(["systemctl", "enable", "--now", timer_path.name])
-        result = self.run(["systemctl", "start", service_path.name], check=False)
-        if result.returncode != 0:
-            return (
-                "Hourly status reporter was installed, but the first status run failed. "
-                f"The timer remains enabled. Check `systemctl status {service_path.name}` "
-                f"and `journalctl -u {service_path.name} -n 50 --no-pager`."
-            )
-        return None
+        return self._status_reporter_installer.install(config)
 
     def _own(self, path: Path) -> None:
         if not self.is_root():

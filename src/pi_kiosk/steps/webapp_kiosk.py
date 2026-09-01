@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import re
 import shlex
-from typing import Callable
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 from pi_kiosk.choice import Choice
 from pi_kiosk.errors import UserFacingError
-from pi_kiosk.host import Host, WebAppSource
+from pi_kiosk.host import WebAppHost, WebAppSource
 from pi_kiosk.steps.kiosk_common import (
     CLOSE,
     CURSOR_RC_BEGIN,
@@ -22,6 +23,9 @@ from pi_kiosk.steps.kiosk_common import (
 from pi_kiosk.totem_status import status_config_path, status_script_path
 from pi_kiosk.ui import UI
 
+if TYPE_CHECKING:
+    from pi_kiosk.wizard_context import WizardContext
+
 KIOSK_PORT = 8080
 CURSOR_IDLE_SECONDS = 5
 SERVER_READY_RETRIES = 50
@@ -31,6 +35,12 @@ STARTUP_HEARTBEAT_DELAY_SECONDS = 5
 _REPO_PROMPT = "GitHub repo"
 _REPO_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _HIDE_CURSOR_COMMAND = "-M alt -M logo -P h >/dev/null 2>&1 || true"
+
+
+@dataclass(frozen=True)
+class WebAppKioskRequest:
+    source: WebAppSource
+    next_action: str | None = None
 
 
 def action_url() -> str:
@@ -192,23 +202,37 @@ class WebAppKioskStep:
     interactive = True
 
     def __init__(self, *, prompt_for_next_action: bool = True) -> None:
-        self._progress = None
-        self._choose: Callable[[str, list[Choice]], str] | None = None
         self._prompt_for_next_action = prompt_for_next_action
 
-    def ask(self, ui: UI) -> WebAppSource:
-        self._progress = ui.progress
-        self._choose = ui.choose
+    def ask(
+        self,
+        ui: UI,
+        context: WizardContext | None = None,
+    ) -> WebAppKioskRequest:
         while True:
             raw = ui.prompt(self.title)
             try:
-                return normalize_source(raw)
+                source = normalize_source(raw)
             except ValueError as exc:
                 ui.warn(str(exc))
+                continue
 
-    def apply(self, host: Host, source: WebAppSource) -> str:
-        progress = self._progress or (lambda _message: None)
-        deployment = host.deploy_webapp(source, ("build", "dist"), progress=progress)
+            next_action = None
+            if self._prompt_for_next_action:
+                next_action = ui.choose(NEXT_ACTION_PROMPT, NEXT_ACTION_CHOICES)
+            return WebAppKioskRequest(source=source, next_action=next_action)
+
+    def apply(
+        self,
+        host: WebAppHost,
+        request: WebAppKioskRequest | WebAppSource,
+        context: WizardContext | None = None,
+    ) -> str:
+        if isinstance(request, WebAppSource):
+            request = WebAppKioskRequest(source=request)
+
+        progress = context.ui.progress if context is not None else None
+        deployment = host.deploy_webapp(request.source, ("build", "dist"), progress=progress)
         browser = host.chromium_command()
         if browser is None:
             raise UserFacingError(
@@ -247,11 +271,8 @@ class WebAppKioskStep:
             f"{deployment.artifact_dir}/. Chromium will start on the next graphical login."
             f" The mouse cursor will hide after idle. {log_report}"
         )
-        if self._prompt_for_next_action:
-            next_action = CLOSE
-            if self._choose is not None:
-                next_action = self._choose(NEXT_ACTION_PROMPT, NEXT_ACTION_CHOICES)
-            report = f"{report} {self.perform_next_action(host, next_action)}"
+        if request.next_action is not None:
+            report = f"{report} {self.perform_next_action(host, request.next_action)}"
         return report
 
     def next_action_prompt(self) -> str:
@@ -260,7 +281,7 @@ class WebAppKioskStep:
     def next_action_choices(self) -> list[Choice]:
         return list(NEXT_ACTION_CHOICES)
 
-    def perform_next_action(self, host: Host, action: str) -> str:
+    def perform_next_action(self, host: WebAppHost, action: str) -> str:
         home = host.home()
         log_report = (
             "Attach a terminal to the server logs with: "

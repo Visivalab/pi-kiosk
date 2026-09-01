@@ -12,21 +12,23 @@ from pi_kiosk.steps.video_kiosk import (
     launcher_path,
     normalize_source,
 )
+from pi_kiosk.wizard_context import WizardContext
 
 
 class AskVideoKioskStepTests(unittest.TestCase):
     def test_normalizes_dropbox_link_to_direct_download(self):
         ui = FakeUI(answers={DROPBOX_PROMPT: "https://www.dropbox.com/s/example/demo.mp4?dl=0"})
 
-        answer = VideoKioskStep().ask(ui)
+        answer = VideoKioskStep(prompt_for_next_action=False).ask(ui)
 
         self.assertEqual(
-            answer,
+            answer.source,
             VideoSource(
                 shared_url="https://www.dropbox.com/s/example/demo.mp4?dl=0",
                 download_url="https://www.dropbox.com/s/example/demo.mp4?dl=1",
             ),
         )
+        self.assertIsNone(answer.next_action)
 
     def test_normalize_source_replaces_existing_query_params(self):
         answer = normalize_source(
@@ -58,10 +60,10 @@ class AskVideoKioskStepTests(unittest.TestCase):
 
         ui = RetryUI()
 
-        answer = VideoKioskStep().ask(ui)
+        answer = VideoKioskStep(prompt_for_next_action=False).ask(ui)
 
         self.assertEqual(
-            answer,
+            answer.source,
             VideoSource(
                 shared_url="https://www.dropbox.com/s/example/demo.mp4",
                 download_url="https://www.dropbox.com/s/example/demo.mp4?dl=1",
@@ -109,6 +111,43 @@ class AskVideoKioskStepTests(unittest.TestCase):
 
 
 class ApplyVideoKioskStepTests(unittest.TestCase):
+    def test_apply_does_not_depend_on_mutable_instance_state_from_ask(self):
+        host = FakeHost()
+        request = VideoKioskStep().ask(
+            FakeUI(
+                answers={
+                    DROPBOX_PROMPT: "https://www.dropbox.com/s/example/demo.mp4?dl=0",
+                    VIDEO_NEXT_ACTION_PROMPT: "simulate",
+                }
+            )
+        )
+
+        report = VideoKioskStep().apply(
+            host,
+            request,
+            WizardContext(
+                host=host,
+                ui=FakeUI(
+                    answers={
+                        DROPBOX_PROMPT: "https://www.dropbox.com/s/example/demo.mp4?dl=0",
+                        VIDEO_NEXT_ACTION_PROMPT: "simulate",
+                    }
+                ),
+            ),
+        )
+
+        self.assertEqual(host.launched_video_paths, [launcher_path(host.home())])
+        self.assertIn("launching video now", report.lower())
+        self.assertEqual(
+            host.video_progress_messages,
+            [
+                "Preparing Dropbox download",
+                "Downloading video file (0%)",
+                "Downloading video file (100%)",
+                "Deploying video file",
+            ],
+        )
+
     def test_simulates_autorun_when_user_chooses_test_option(self):
         host = FakeHost()
         ui = FakeUI(
@@ -120,7 +159,7 @@ class ApplyVideoKioskStepTests(unittest.TestCase):
         step = VideoKioskStep()
         source = step.ask(ui)
 
-        report = step.apply(host, source)
+        report = step.apply(host, source, WizardContext(host=host, ui=ui))
 
         self.assertEqual(host.launched_video_paths, [launcher_path(host.home())])
         self.assertFalse(host.rebooted)
@@ -137,7 +176,7 @@ class ApplyVideoKioskStepTests(unittest.TestCase):
         step = VideoKioskStep()
         source = step.ask(ui)
 
-        report = step.apply(host, source)
+        report = step.apply(host, source, WizardContext(host=host, ui=ui))
 
         self.assertEqual(host.launched_video_paths, [])
         self.assertTrue(host.rebooted)
@@ -154,7 +193,7 @@ class ApplyVideoKioskStepTests(unittest.TestCase):
         step = VideoKioskStep()
         source = step.ask(ui)
 
-        report = step.apply(host, source)
+        report = step.apply(host, source, WizardContext(host=host, ui=ui))
 
         self.assertEqual(host.launched_video_paths, [])
         self.assertFalse(host.rebooted)
@@ -168,14 +207,13 @@ class ApplyVideoKioskStepTests(unittest.TestCase):
             )
         )
         step = VideoKioskStep()
-        step.ask(
-            FakeUI(
-                answers={
-                    DROPBOX_PROMPT: "https://www.dropbox.com/s/example/demo.mp4?dl=0",
-                    VIDEO_NEXT_ACTION_PROMPT: "close",
-                }
-            )
+        ui = FakeUI(
+            answers={
+                DROPBOX_PROMPT: "https://www.dropbox.com/s/example/demo.mp4?dl=0",
+                VIDEO_NEXT_ACTION_PROMPT: "close",
+            }
         )
+        step.ask(ui)
 
         report = step.apply(
             host,
@@ -183,6 +221,7 @@ class ApplyVideoKioskStepTests(unittest.TestCase):
                 shared_url="https://www.dropbox.com/s/example/demo.mp4?dl=0",
                 download_url="https://www.dropbox.com/s/example/demo.mp4?dl=1",
             ),
+            WizardContext(host=host, ui=ui),
         )
 
         self.assertEqual(

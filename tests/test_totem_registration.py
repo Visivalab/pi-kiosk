@@ -1,4 +1,5 @@
 import unittest
+from unittest import mock
 
 from tests.fake_ui import FakeUI
 from tests.fakes import FakeHost
@@ -6,6 +7,8 @@ from tests.fakes import FakeHost
 from pi_kiosk.errors import UserFacingError
 from pi_kiosk.host import TotemConnectionDetails
 from pi_kiosk.totem_registration import (
+    REGISTER_TOTEM_TOKEN,
+    REGISTER_TOTEM_URL,
     RUSTDESK_INSTALL_PROMPT,
     RUSTDESK_PASSWORD_PROMPT,
     RUSTDESK_SET_PASSWORD_PROMPT,
@@ -14,6 +17,7 @@ from pi_kiosk.totem_registration import (
     TOTEM_LOCATION_PROMPT,
     TOTEM_NAME_PROMPT,
     TOTEM_TYPE_PROMPT,
+    default_config,
     TotemRegistrar,
     TotemRegistrationConfig,
 )
@@ -37,6 +41,27 @@ def _ui(answers: dict[str, str] | None = None) -> FakeUI:
 
 
 class TotemRegistrarRustDeskTests(unittest.TestCase):
+    def test_default_config_uses_module_constants_when_env_is_unset(self):
+        with mock.patch.dict("os.environ", {}, clear=True):
+            self.assertEqual(
+                default_config(),
+                TotemRegistrationConfig(
+                    endpoint_url=REGISTER_TOTEM_URL,
+                    token=REGISTER_TOTEM_TOKEN,
+                ),
+            )
+
+    def test_default_config_prefers_environment_overrides(self):
+        with mock.patch.dict(
+            "os.environ",
+            {
+                "PI_KIOSK_REGISTER_TOTEM_URL": "https://dashboard.example.com/register-new-totem",
+                "PI_KIOSK_REGISTER_TOTEM_TOKEN": "totem-secret",
+            },
+            clear=True,
+        ):
+            self.assertEqual(default_config(), CONFIG)
+
     def test_reuses_existing_rustdesk_credentials_without_extra_prompts(self):
         host = FakeHost(saved_rustdesk_password="secret-pass")
         ui = _ui()
@@ -87,7 +112,7 @@ class TotemRegistrarRustDeskTests(unittest.TestCase):
         registrar = TotemRegistrar(config=CONFIG)
 
         request = registrar.ask(ui, host=host)
-        registrar.register(host, request)
+        registrar.register(host, request, progress=ui.progress)
 
         self.assertEqual(host.rustdesk_passwords, ["secret-pass"])
         self.assertEqual(host.configured_rustdesk_passwords, [])

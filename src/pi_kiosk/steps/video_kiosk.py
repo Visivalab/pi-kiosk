@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import shlex
-from typing import Callable
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from pi_kiosk.choice import Choice
 from pi_kiosk.errors import UserFacingError
-from pi_kiosk.host import Host, VideoSource
+from pi_kiosk.host import VideoHost, VideoSource
 from pi_kiosk.steps.kiosk_common import (
     CLOSE,
     REBOOT,
@@ -14,6 +15,9 @@ from pi_kiosk.steps.kiosk_common import (
     install_kiosk_autostart,
 )
 from pi_kiosk.ui import UI
+
+if TYPE_CHECKING:
+    from pi_kiosk.wizard_context import WizardContext
 
 DROPBOX_PROMPT = "Dropbox link"
 VIDEO_NEXT_ACTION_PROMPT = "Choose what to do with the video now."
@@ -31,6 +35,12 @@ VIDEO_NEXT_ACTION_CHOICES = [
         label="Do nothing",
     ),
 ]
+
+
+@dataclass(frozen=True)
+class VideoKioskRequest:
+    source: VideoSource
+    next_action: str | None = None
 
 
 def normalize_source(value: str) -> VideoSource:
@@ -83,23 +93,37 @@ class VideoKioskStep:
     interactive = True
 
     def __init__(self, *, prompt_for_next_action: bool = True) -> None:
-        self._progress = None
-        self._choose: Callable[[str, list[object]], str] | None = None
         self._prompt_for_next_action = prompt_for_next_action
 
-    def ask(self, ui: UI) -> VideoSource:
-        self._progress = ui.progress
-        self._choose = ui.choose
+    def ask(
+        self,
+        ui: UI,
+        context: WizardContext | None = None,
+    ) -> VideoKioskRequest:
         while True:
             raw = ui.prompt(self.title)
             try:
-                return normalize_source(raw)
+                source = normalize_source(raw)
             except ValueError as exc:
                 ui.warn(str(exc))
+                continue
 
-    def apply(self, host: Host, source: VideoSource) -> str:
-        progress = self._progress or (lambda _message: None)
-        deployment = host.deploy_video(source, progress=progress)
+            next_action = None
+            if self._prompt_for_next_action:
+                next_action = ui.choose(VIDEO_NEXT_ACTION_PROMPT, VIDEO_NEXT_ACTION_CHOICES)
+            return VideoKioskRequest(source=source, next_action=next_action)
+
+    def apply(
+        self,
+        host: VideoHost,
+        request: VideoKioskRequest | VideoSource,
+        context: WizardContext | None = None,
+    ) -> str:
+        if isinstance(request, VideoSource):
+            request = VideoKioskRequest(source=request)
+
+        progress = context.ui.progress if context is not None else None
+        deployment = host.deploy_video(request.source, progress=progress)
         mpv = host.mpv_command()
         if mpv is None:
             host.ensure_packages_installed(("mpv",))
@@ -121,11 +145,8 @@ class VideoKioskStep:
             f"Done: video kiosk deployed with {deployment.file_name}. "
             "mpv will start on the next graphical login."
         )
-        if self._prompt_for_next_action:
-            next_action = CLOSE
-            if self._choose is not None:
-                next_action = self._choose(VIDEO_NEXT_ACTION_PROMPT, VIDEO_NEXT_ACTION_CHOICES)
-            report = f"{report} {self.perform_next_action(host, next_action)}"
+        if request.next_action is not None:
+            report = f"{report} {self.perform_next_action(host, request.next_action)}"
         return report
 
     def next_action_prompt(self) -> str:
@@ -134,7 +155,7 @@ class VideoKioskStep:
     def next_action_choices(self) -> list[Choice]:
         return list(VIDEO_NEXT_ACTION_CHOICES)
 
-    def perform_next_action(self, host: Host, action: str) -> str:
+    def perform_next_action(self, host: VideoHost, action: str) -> str:
         if action == SIMULATE_AUTORUN:
             host.launch_video_now(launcher_path(host.home()))
             return "Done: launching video now for testing."

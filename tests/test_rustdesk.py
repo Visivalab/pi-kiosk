@@ -5,6 +5,7 @@ from tests.fakes import FakeHost
 
 from pi_kiosk.host import RustDeskInstall
 from pi_kiosk.steps.rustdesk import RustDeskStep
+from pi_kiosk.wizard_context import WizardContext
 
 
 class AskRustDeskStepTests(unittest.TestCase):
@@ -42,9 +43,10 @@ class ApplyRustDeskStepTests(unittest.TestCase):
             )
         )
         step = RustDeskStep()
-        step.ask(FakeUI(answers={"RustDesk password": "secret-pass"}))
+        ui = FakeUI(answers={"RustDesk password": "secret-pass"})
+        step.ask(ui)
 
-        report = step.apply(host, "secret-pass")
+        report = step.apply(host, "secret-pass", WizardContext(host=host, ui=ui))
 
         self.assertEqual(host.rustdesk_passwords, ["secret-pass"])
         self.assertEqual(
@@ -57,3 +59,25 @@ class ApplyRustDeskStepTests(unittest.TestCase):
             ],
         )
         self.assertIn("987 654 321", report)
+
+    def test_apply_does_not_depend_on_mutable_instance_state_from_ask(self):
+        host = FakeHost(
+            rustdesk_install=RustDeskInstall(
+                rustdesk_id="987 654 321",
+                asset_name="rustdesk-1.4.3-aarch64.deb",
+            )
+        )
+        ui = FakeUI(answers={"RustDesk password": "secret-pass"})
+        password = RustDeskStep().ask(ui)
+
+        RustDeskStep().apply(host, password, WizardContext(host=host, ui=ui))
+
+        self.assertEqual(
+            host.rustdesk_progress_messages,
+            [
+                "Resolving latest RustDesk release",
+                "Downloading RustDesk package",
+                "Installing RustDesk package",
+                "Configuring RustDesk access",
+            ],
+        )

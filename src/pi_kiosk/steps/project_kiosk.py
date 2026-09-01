@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from pi_kiosk.choice import Choice
 from pi_kiosk.host import Host, VideoSource, WebAppSource
 from pi_kiosk.steps.kiosk_common import NEXT_ACTION_PROMPT
-from pi_kiosk.steps.video_kiosk import VideoKioskStep
-from pi_kiosk.steps.webapp_kiosk import WebAppKioskStep
+from pi_kiosk.steps.video_kiosk import VideoKioskRequest, VideoKioskStep
+from pi_kiosk.steps.webapp_kiosk import WebAppKioskRequest, WebAppKioskStep
 from pi_kiosk.ui import UI
+
+if TYPE_CHECKING:
+    from pi_kiosk.wizard_context import WizardContext
 
 TYPE_OF_PROJECT_PROMPT = "Type of project"
 WEBAPP = "webapp"
@@ -21,7 +25,15 @@ PROJECT_TYPE_CHOICES = [
 @dataclass(frozen=True)
 class ProjectSelection:
     project_type: str
-    source: WebAppSource | VideoSource
+    request: WebAppKioskRequest | VideoKioskRequest
+
+    @property
+    def source(self) -> WebAppSource | VideoSource:
+        return self.request.source
+
+    @property
+    def next_action(self) -> str | None:
+        return self.request.next_action
 
 
 class ProjectKioskStep:
@@ -41,32 +53,20 @@ class ProjectKioskStep:
             WEBAPP: webapp_step or WebAppKioskStep(prompt_for_next_action=prompt_for_next_action),
             VIDEO: video_step or VideoKioskStep(prompt_for_next_action=prompt_for_next_action),
         }
-        self._last_project_type: str | None = None
 
-    def ask(self, ui: UI) -> ProjectSelection:
+    def ask(
+        self,
+        ui: UI,
+        context: WizardContext | None = None,
+    ) -> ProjectSelection:
         project_type = ui.choose(self.title, list(self.choices))
-        source = self._steps[project_type].ask(ui)
-        return ProjectSelection(project_type=project_type, source=source)
+        request = self._steps[project_type].ask(ui, context)
+        return ProjectSelection(project_type=project_type, request=request)
 
-    def apply(self, host: Host, selection: ProjectSelection) -> str:
-        self._last_project_type = selection.project_type
-        return self._steps[selection.project_type].apply(host, selection.source)
-
-    def next_action_prompt(self) -> str:
-        return self._current_step().next_action_prompt()
-
-    def next_action_choices(self) -> list[Choice]:
-        return self._current_step().next_action_choices()
-
-    def perform_next_action(self, host: Host, action: str) -> str:
-        return self._current_step().perform_next_action(host, action)
-
-    def selected_project_type(self) -> str:
-        if self._last_project_type is None:
-            raise RuntimeError("Project kiosk step has not run yet.")
-        return self._last_project_type
-
-    def _current_step(self) -> WebAppKioskStep | VideoKioskStep:
-        if self._last_project_type is None:
-            raise RuntimeError("Project kiosk step has not run yet.")
-        return self._steps[self._last_project_type]
+    def apply(
+        self,
+        host: Host,
+        selection: ProjectSelection,
+        context: WizardContext | None = None,
+    ) -> str:
+        return self._steps[selection.project_type].apply(host, selection.request, context)

@@ -1,7 +1,15 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from pi_kiosk.choice import Choice
+from pi_kiosk.display import DISPLAY_CONFIG_KEY, DisplayConfig
 from pi_kiosk.files import read_or_empty, upsert_marked_block
-from pi_kiosk.host import Host
+from pi_kiosk.host import RotationHost
 from pi_kiosk.ui import UI
+
+if TYPE_CHECKING:
+    from pi_kiosk.wizard_context import WizardContext
 
 ROTATION_CHOICES = (
     Choice("none", "No rotation"),
@@ -34,12 +42,19 @@ class RotationStep:
     title = "Screen rotation"
     choices = ROTATION_CHOICES
 
-    def ask(self, ui: UI) -> str:
+    def ask(self, ui: UI, context: WizardContext | None = None) -> str:
         return ui.choose(self.title, list(self.choices))
 
-    def apply(self, host: Host, choice_id: str) -> str:
+    def apply(
+        self,
+        host: RotationHost,
+        choice_id: str,
+        context: WizardContext | None = None,
+    ) -> str:
         transform = transform_for(choice_id)
         output = host.detect_wayland_output() or DEFAULT_OUTPUT
+        if context is not None:
+            context.state[DISPLAY_CONFIG_KEY] = DisplayConfig(output=output, transform=transform)
         command = f"wlr-randr --output {output} --transform {transform}"
 
         path = f"{host.home()}/.config/labwc/autostart"
