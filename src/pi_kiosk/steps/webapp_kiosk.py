@@ -4,7 +4,7 @@ import re
 import shlex
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
-from urllib.parse import urlparse
+from urllib.parse import urlsplit
 
 from pi_kiosk.choice import Choice
 from pi_kiosk.errors import UserFacingError
@@ -34,6 +34,7 @@ STARTUP_HEARTBEAT_RETRIES = 12
 STARTUP_HEARTBEAT_DELAY_SECONDS = 5
 _REPO_PROMPT = "GitHub repo"
 _REPO_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+_GITHUB_HOSTS = {"github.com", "www.github.com"}
 _HIDE_CURSOR_COMMAND = "-M alt -M logo -P h >/dev/null 2>&1 || true"
 
 
@@ -68,24 +69,31 @@ def normalize_source(value: str) -> WebAppSource:
     if not text:
         raise ValueError("Enter a GitHub repo in owner/repo format.")
 
-    if text.startswith("https://github.com/"):
-        return _normalize_github_url(text)
-
-    if not _REPO_PATTERN.fullmatch(text):
-        raise ValueError("Enter the repo as owner/repo or a full GitHub URL.")
-    return WebAppSource(repo_ref=text)
+    parts = _split_github_parts(text)
+    return _normalize_github_parts(parts)
 
 
-def _normalize_github_url(value: str) -> WebAppSource:
-    parsed = urlparse(value)
-    path = parsed.path.removesuffix(".git").strip("/")
-    parts = [part for part in path.split("/") if part]
+def _split_github_parts(value: str) -> list[str]:
+    parsed = urlsplit(value)
+    if parsed.scheme and parsed.scheme not in {"http", "https"}:
+        raise ValueError("Enter the repo as owner/repo or a GitHub URL.")
+
+    if parsed.scheme and parsed.netloc.lower() not in _GITHUB_HOSTS:
+        raise ValueError("Enter the repo as owner/repo or a GitHub URL.")
+
+    parts = [part for part in parsed.path.strip("/").split("/") if part]
+    if parts and parts[0].lower() in _GITHUB_HOSTS:
+        return parts[1:]
+    return parts
+
+
+def _normalize_github_parts(parts: list[str]) -> WebAppSource:
     if len(parts) < 2:
-        raise ValueError("Enter the repo as owner/repo or a full GitHub URL.")
+        raise ValueError("Enter a GitHub repo in owner/repo format.")
 
-    repo_ref = "/".join(parts[:2])
+    repo_ref = f"{parts[0]}/{parts[1].removesuffix('.git')}"
     if not _REPO_PATTERN.fullmatch(repo_ref):
-        raise ValueError("Enter the repo as owner/repo or a full GitHub URL.")
+        raise ValueError("Enter the repo as owner/repo or a GitHub URL.")
 
     if len(parts) == 2:
         return WebAppSource(repo_ref=repo_ref)
@@ -96,7 +104,7 @@ def _normalize_github_url(value: str) -> WebAppSource:
             raise ValueError("GitHub tree URLs must include a subdirectory path.")
         return WebAppSource(repo_ref=repo_ref, subdir=subdir)
 
-    raise ValueError("Enter the repo as owner/repo or a full GitHub URL.")
+    raise ValueError("Enter the repo as owner/repo, owner/repo/tree/branch/path, or a GitHub URL.")
 
 
 def launcher_path(home: str) -> str:

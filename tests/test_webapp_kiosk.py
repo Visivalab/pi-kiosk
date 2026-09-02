@@ -42,6 +42,58 @@ class AskWebAppKioskStepTests(unittest.TestCase):
         self.assertEqual(answer.source, WebAppSource(repo_ref="Visivalab/demo-app"))
         self.assertIsNone(answer.next_action)
 
+    def test_normalizes_github_url_without_scheme(self):
+        source = normalize_source("github.com/Visivalab/demo-app")
+
+        self.assertEqual(source, WebAppSource(repo_ref="Visivalab/demo-app"))
+
+    def test_normalizes_github_url_without_scheme_and_ignores_query_and_fragment(self):
+        source = normalize_source("github.com/Visivalab/demo-app?tab=readme-ov-file#readme")
+
+        self.assertEqual(source, WebAppSource(repo_ref="Visivalab/demo-app"))
+
+    def test_normalizes_tree_url_without_scheme_with_subdirectory(self):
+        source = normalize_source(
+            "github.com/Visivalab/etruscos_touch/tree/main/screen_1_de"
+        )
+
+        self.assertEqual(
+            source,
+            WebAppSource(
+                repo_ref="Visivalab/etruscos_touch",
+                subdir="screen_1_de",
+            ),
+        )
+
+    def test_normalizes_tree_url_without_scheme_with_subdirectory_and_ignores_query(self):
+        source = normalize_source(
+            "github.com/Visivalab/etruscos_touch/tree/main/screen_1_de?plain=1"
+        )
+
+        self.assertEqual(
+            source,
+            WebAppSource(
+                repo_ref="Visivalab/etruscos_touch",
+                subdir="screen_1_de",
+            ),
+        )
+
+    def test_normalizes_owner_repo_tree_shorthand_with_subdirectory(self):
+        source = normalize_source("Visivalab/etruscos_touch/tree/main/screen_1_de")
+
+        self.assertEqual(
+            source,
+            WebAppSource(
+                repo_ref="Visivalab/etruscos_touch",
+                subdir="screen_1_de",
+            ),
+        )
+
+    def test_normalizes_owner_repo_shorthand_and_ignores_query_and_fragment(self):
+        source = normalize_source("Visivalab/demo-app?tab=readme-ov-file#readme")
+
+        self.assertEqual(source, WebAppSource(repo_ref="Visivalab/demo-app"))
+
     def test_normalizes_tree_url_with_subdirectory(self):
         source = normalize_source(
             "https://github.com/Visivalab/etruscos_touch/tree/main/screen_1_de"
