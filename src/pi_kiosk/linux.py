@@ -10,6 +10,7 @@ import socket
 import subprocess
 import tarfile
 import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
@@ -44,6 +45,11 @@ class NeedSudoUser(RuntimeError):
 
 
 RUSTDESK_CREDENTIALS_PATH = Path("/etc/pi-kiosk/rustdesk.json")
+RUSTDESK_PASSWORD_SUCCESS_TEXT = "Done!"
+RUSTDESK_UNATTENDED_OPTIONS = (
+    ("approve-mode", "password"),
+    ("verification-method", "use-permanent-password"),
+)
 
 
 class WebAppDeployer:
@@ -185,7 +191,19 @@ class RustDeskService:
         return shutil.which("rustdesk") is not None
 
     def configure_password(self, password: str) -> None:
-        subprocess.run(["rustdesk", "--password", password], check=True, text=True)
+        failure = self._configure_unattended_access(password)
+        if failure is not None:
+            launch_failure = self._start_user_server()
+            if launch_failure is None:
+                time.sleep(1)
+                failure = self._configure_unattended_access(password)
+            else:
+                failure = f"{failure}{launch_failure} "
+        if failure is not None:
+            raise UserFacingError(
+                "RustDesk did not confirm the unattended-access configuration. "
+                f"{failure} Open RustDesk once in the desktop session and run the setup again."
+            )
         _save_rustdesk_password(password)
         self._host._restart_rustdesk_service()
 
@@ -201,6 +219,58 @@ class RustDeskService:
                 else _saved_rustdesk_password()
             ),
         )
+
+    def _configure_unattended_access(self, password: str) -> str | None:
+        failures: list[str] = []
+
+        for option_name, expected_value in RUSTDESK_UNATTENDED_OPTIONS:
+            self._run_rustdesk_command(["--option", option_name, expected_value])
+            result = self._run_rustdesk_command(["--option", option_name])
+            current_value = result.stdout.strip()
+            if current_value != expected_value:
+                actual = current_value or "empty"
+                failures.append(
+                    f"RustDesk kept {option_name}={actual} instead of {expected_value}."
+                )
+
+        result = self._run_rustdesk_command(["--password", password])
+        if result.stdout.strip() != RUSTDESK_PASSWORD_SUCCESS_TEXT:
+            detail = _subprocess_result_detail(result)
+            if detail:
+                failures.append(f"RustDesk password command said: {detail}.")
+            else:
+                failures.append("RustDesk did not report a successful password update.")
+
+        if failures:
+            return " ".join(failures) + " "
+        return None
+
+    def _run_rustdesk_command(
+        self,
+        argv: list[str],
+    ) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["rustdesk", *argv],
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+
+    def _start_user_server(self) -> str | None:
+        result = self._host.run_in_desktop_session(
+            [
+                "sh",
+                "-lc",
+                "nohup rustdesk --server >/dev/null 2>&1 </dev/null &",
+            ],
+            check=False,
+        )
+        if result.returncode == 0:
+            return
+        detail = _subprocess_result_detail(result)
+        if detail:
+            return f"Could not start RustDesk in the desktop session: {detail}."
+        return "Could not start RustDesk in the desktop session."
 
 
 class TotemRegistrationClient:
@@ -379,7 +449,7 @@ class LinuxHost:
             return result
 
         if self.is_root():
-            command = ["sudo", "-u", self.user(), "env"]
+            command = ["sudo", "-H", "-u", self.user(), "env"]
             command.extend(f"{name}={value}" for name, value in env.items())
             command.extend(argv)
             return subprocess.run(
@@ -545,10 +615,13 @@ class LinuxHost:
     def _desktop_session_env(self) -> dict[str, str] | None:
         runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
         wayland_display = os.environ.get("WAYLAND_DISPLAY")
+        term = os.environ.get("TERM")
+        home = self.home()
 
         if self.is_root():
             user_info = pwd.getpwnam(self.user())
             runtime_dir = runtime_dir or f"/run/user/{user_info.pw_uid}"
+            home = user_info.pw_dir
 
         if not runtime_dir:
             return None
@@ -563,10 +636,18 @@ class LinuxHost:
                 return None
             wayland_display = sockets[0].name
 
-        return {
+        env = {
             "XDG_RUNTIME_DIR": str(runtime_path),
             "WAYLAND_DISPLAY": wayland_display,
         }
+        if home:
+            env["HOME"] = home
+        bus_path = runtime_path / "bus"
+        if bus_path.exists():
+            env["DBUS_SESSION_BUS_ADDRESS"] = f"unix:path={bus_path}"
+        if term:
+            env["TERM"] = term
+        return env
 
     def _download_github_archive(self, repo_ref: str, target_dir: Path) -> Path:
         owner, repo = repo_ref.split("/", 1)
@@ -808,6 +889,11 @@ def _http_error_detail(exc: error.HTTPError) -> str:
     if len(compact) > 200:
         return compact[:197] + "..."
     return compact
+
+
+def _subprocess_result_detail(result: subprocess.CompletedProcess[str]) -> str:
+    parts = [value.strip() for value in (result.stdout, result.stderr) if value.strip()]
+    return " ".join(parts)
 
 
 def _rustdesk_id() -> str | None:

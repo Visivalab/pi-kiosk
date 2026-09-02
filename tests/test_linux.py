@@ -119,7 +119,47 @@ class LinuxHostTests(unittest.TestCase):
                         with mock.patch.object(host, "_restart_rustdesk_service"):
                             with mock.patch.object(host, "_rustdesk_get_id", return_value="987 654 321"):
                                 with mock.patch("pi_kiosk.linux.RUSTDESK_CREDENTIALS_PATH", saved_password_path):
-                                    with mock.patch("subprocess.run") as run:
+                                    with mock.patch(
+                                        "subprocess.run",
+                                        side_effect=[
+                                            subprocess.CompletedProcess(
+                                                args=[],
+                                                returncode=0,
+                                                stdout="",
+                                                stderr="",
+                                            ),
+                                            subprocess.CompletedProcess(
+                                                args=[],
+                                                returncode=0,
+                                                stdout="",
+                                                stderr="",
+                                            ),
+                                            subprocess.CompletedProcess(
+                                                args=[],
+                                                returncode=0,
+                                                stdout="password\n",
+                                                stderr="",
+                                            ),
+                                            subprocess.CompletedProcess(
+                                                args=[],
+                                                returncode=0,
+                                                stdout="",
+                                                stderr="",
+                                            ),
+                                            subprocess.CompletedProcess(
+                                                args=[],
+                                                returncode=0,
+                                                stdout="use-permanent-password\n",
+                                                stderr="",
+                                            ),
+                                            subprocess.CompletedProcess(
+                                                args=[],
+                                                returncode=0,
+                                                stdout="Done!\n",
+                                                stderr="",
+                                            ),
+                                        ],
+                                    ) as run:
                                         host.install_rustdesk("secret-pass")
 
             self.assertEqual(
@@ -128,9 +168,34 @@ class LinuxHostTests(unittest.TestCase):
             )
             self.assertEqual(saved_password_path.stat().st_mode & 0o777, 0o600)
             run.assert_any_call(
+                ["rustdesk", "--option", "approve-mode", "password"],
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+            run.assert_any_call(
+                ["rustdesk", "--option", "approve-mode"],
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+            run.assert_any_call(
+                ["rustdesk", "--option", "verification-method", "use-permanent-password"],
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+            run.assert_any_call(
+                ["rustdesk", "--option", "verification-method"],
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+            run.assert_any_call(
                 ["rustdesk", "--password", "secret-pass"],
                 check=True,
                 text=True,
+                capture_output=True,
             )
 
     def test_rustdesk_installed_checks_path(self):
@@ -148,7 +213,41 @@ class LinuxHostTests(unittest.TestCase):
 
             with mock.patch("pi_kiosk.linux.RUSTDESK_CREDENTIALS_PATH", saved_password_path):
                 with mock.patch.object(host, "_restart_rustdesk_service") as restart:
-                    with mock.patch("subprocess.run") as run:
+                    with mock.patch(
+                        "subprocess.run",
+                        side_effect=[
+                            subprocess.CompletedProcess(
+                                args=[],
+                                returncode=0,
+                                stdout="",
+                                stderr="",
+                            ),
+                            subprocess.CompletedProcess(
+                                args=[],
+                                returncode=0,
+                                stdout="password\n",
+                                stderr="",
+                            ),
+                            subprocess.CompletedProcess(
+                                args=[],
+                                returncode=0,
+                                stdout="",
+                                stderr="",
+                            ),
+                            subprocess.CompletedProcess(
+                                args=[],
+                                returncode=0,
+                                stdout="use-permanent-password\n",
+                                stderr="",
+                            ),
+                            subprocess.CompletedProcess(
+                                args=[],
+                                returncode=0,
+                                stdout="Done!\n",
+                                stderr="",
+                            ),
+                        ],
+                    ) as run:
                         host.configure_rustdesk_password("secret-pass")
 
             self.assertEqual(
@@ -156,12 +255,275 @@ class LinuxHostTests(unittest.TestCase):
                 {"password": "secret-pass"},
             )
             self.assertEqual(saved_password_path.stat().st_mode & 0o777, 0o600)
-            run.assert_called_once_with(
+            run.assert_any_call(
+                ["rustdesk", "--option", "approve-mode", "password"],
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+            run.assert_any_call(
+                ["rustdesk", "--option", "approve-mode"],
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+            run.assert_any_call(
+                ["rustdesk", "--option", "verification-method", "use-permanent-password"],
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+            run.assert_any_call(
+                ["rustdesk", "--option", "verification-method"],
+                check=True,
+                text=True,
+                capture_output=True,
+            )
+            run.assert_any_call(
                 ["rustdesk", "--password", "secret-pass"],
                 check=True,
                 text=True,
+                capture_output=True,
             )
             restart.assert_called_once_with()
+
+    def test_configure_rustdesk_password_starts_user_server_when_cli_does_not_confirm(self):
+        host = LinuxHost()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            saved_password_path = Path(tmp) / "etc" / "pi-kiosk" / "rustdesk.json"
+
+            with mock.patch("pi_kiosk.linux.RUSTDESK_CREDENTIALS_PATH", saved_password_path):
+                with mock.patch.object(host, "_restart_rustdesk_service") as restart:
+                    with mock.patch.object(
+                        host,
+                        "run_in_desktop_session",
+                        return_value=subprocess.CompletedProcess(
+                            args=[],
+                            returncode=0,
+                            stdout="",
+                            stderr="",
+                        ),
+                    ) as start:
+                        with mock.patch("pi_kiosk.linux.time.sleep") as sleep:
+                            with mock.patch(
+                                "subprocess.run",
+                                side_effect=[
+                                    subprocess.CompletedProcess(
+                                        args=[],
+                                        returncode=0,
+                                        stdout="",
+                                        stderr="",
+                                    ),
+                                    subprocess.CompletedProcess(
+                                        args=[],
+                                        returncode=0,
+                                        stdout="\n",
+                                        stderr="",
+                                    ),
+                                    subprocess.CompletedProcess(
+                                        args=[],
+                                        returncode=0,
+                                        stdout="",
+                                        stderr="",
+                                    ),
+                                    subprocess.CompletedProcess(
+                                        args=[],
+                                        returncode=0,
+                                        stdout="\n",
+                                        stderr="",
+                                    ),
+                                    subprocess.CompletedProcess(
+                                        args=[],
+                                        returncode=0,
+                                        stdout="Failed to connect to the RustDesk main service\n",
+                                        stderr="",
+                                    ),
+                                    subprocess.CompletedProcess(
+                                        args=[],
+                                        returncode=0,
+                                        stdout="",
+                                        stderr="",
+                                    ),
+                                    subprocess.CompletedProcess(
+                                        args=[],
+                                        returncode=0,
+                                        stdout="password\n",
+                                        stderr="",
+                                    ),
+                                    subprocess.CompletedProcess(
+                                        args=[],
+                                        returncode=0,
+                                        stdout="",
+                                        stderr="",
+                                    ),
+                                    subprocess.CompletedProcess(
+                                        args=[],
+                                        returncode=0,
+                                        stdout="use-permanent-password\n",
+                                        stderr="",
+                                    ),
+                                    subprocess.CompletedProcess(
+                                        args=[],
+                                        returncode=0,
+                                        stdout="Done!\n",
+                                        stderr="",
+                                    ),
+                                ],
+                            ):
+                                host.configure_rustdesk_password("secret-pass")
+
+            self.assertEqual(
+                json.loads(saved_password_path.read_text(encoding="utf-8")),
+                {"password": "secret-pass"},
+            )
+            start.assert_called_once_with(
+                [
+                    "sh",
+                    "-lc",
+                    "nohup rustdesk --server >/dev/null 2>&1 </dev/null &",
+                ],
+                check=False,
+            )
+            sleep.assert_called_once_with(1)
+            restart.assert_called_once_with()
+
+    def test_configure_rustdesk_password_raises_when_rustdesk_never_confirms(self):
+        host = LinuxHost()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            saved_password_path = Path(tmp) / "etc" / "pi-kiosk" / "rustdesk.json"
+
+            with mock.patch("pi_kiosk.linux.RUSTDESK_CREDENTIALS_PATH", saved_password_path):
+                with mock.patch.object(host, "_restart_rustdesk_service") as restart:
+                    with mock.patch.object(
+                        host,
+                        "run_in_desktop_session",
+                        return_value=subprocess.CompletedProcess(
+                            args=[],
+                            returncode=0,
+                            stdout="",
+                            stderr="",
+                        ),
+                    ) as start:
+                        with mock.patch("pi_kiosk.linux.time.sleep") as sleep:
+                            with mock.patch(
+                                "subprocess.run",
+                                side_effect=[
+                                    subprocess.CompletedProcess(
+                                        args=[],
+                                        returncode=0,
+                                        stdout="",
+                                        stderr="",
+                                    ),
+                                    subprocess.CompletedProcess(
+                                        args=[],
+                                        returncode=0,
+                                        stdout="\n",
+                                        stderr="",
+                                    ),
+                                    subprocess.CompletedProcess(
+                                        args=[],
+                                        returncode=0,
+                                        stdout="",
+                                        stderr="",
+                                    ),
+                                    subprocess.CompletedProcess(
+                                        args=[],
+                                        returncode=0,
+                                        stdout="\n",
+                                        stderr="",
+                                    ),
+                                    subprocess.CompletedProcess(
+                                        args=[],
+                                        returncode=0,
+                                        stdout="Failed to connect to the RustDesk main service\n",
+                                        stderr="",
+                                    ),
+                                    subprocess.CompletedProcess(
+                                        args=[],
+                                        returncode=0,
+                                        stdout="",
+                                        stderr="",
+                                    ),
+                                    subprocess.CompletedProcess(
+                                        args=[],
+                                        returncode=0,
+                                        stdout="\n",
+                                        stderr="",
+                                    ),
+                                    subprocess.CompletedProcess(
+                                        args=[],
+                                        returncode=0,
+                                        stdout="",
+                                        stderr="",
+                                    ),
+                                    subprocess.CompletedProcess(
+                                        args=[],
+                                        returncode=0,
+                                        stdout="\n",
+                                        stderr="",
+                                    ),
+                                    subprocess.CompletedProcess(
+                                        args=[],
+                                        returncode=0,
+                                        stdout="Failed to connect to the RustDesk main service\n",
+                                        stderr="",
+                                    ),
+                                ],
+                            ):
+                                with self.assertRaisesRegex(
+                                    UserFacingError,
+                                    "did not confirm the unattended-access configuration.*"
+                                    "approve-mode=empty.*"
+                                    "Failed to connect to the RustDesk main service.*"
+                                    "Open RustDesk once",
+                                ):
+                                    host.configure_rustdesk_password("secret-pass")
+
+            self.assertFalse(saved_password_path.exists())
+            start.assert_called_once_with(
+                [
+                    "sh",
+                    "-lc",
+                    "nohup rustdesk --server >/dev/null 2>&1 </dev/null &",
+                ],
+                check=False,
+            )
+            sleep.assert_called_once_with(1)
+            restart.assert_not_called()
+
+    def test_run_in_desktop_session_passes_home_and_dbus_env_to_sudo(self):
+        host = LinuxHost()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_dir = Path(tmp) / "run" / "user" / "1000"
+            runtime_dir.mkdir(parents=True)
+            (runtime_dir / "wayland-1").touch()
+            (runtime_dir / "bus").touch()
+            user_info = mock.Mock(pw_uid=1000, pw_dir="/home/pi")
+
+            with mock.patch.object(host, "is_root", return_value=True):
+                with mock.patch.object(host, "user", return_value="pi"):
+                    with mock.patch("pwd.getpwnam", return_value=user_info):
+                        with mock.patch.dict(
+                            "os.environ",
+                            {
+                                "XDG_RUNTIME_DIR": str(runtime_dir),
+                                "TERM": "xterm-256color",
+                            },
+                            clear=True,
+                        ):
+                            with mock.patch("subprocess.run") as run:
+                                host.run_in_desktop_session(["rustdesk", "--server"])
+
+        command = run.call_args.args[0]
+        self.assertEqual(command[:4], ["sudo", "-H", "-u", "pi"])
+        self.assertIn(f"XDG_RUNTIME_DIR={runtime_dir}", command)
+        self.assertIn("WAYLAND_DISPLAY=wayland-1", command)
+        self.assertIn("HOME=/home/pi", command)
+        self.assertIn(f"DBUS_SESSION_BUS_ADDRESS=unix:path={runtime_dir / 'bus'}", command)
+        self.assertIn("TERM=xterm-256color", command)
 
     def test_connection_details_uses_saved_rustdesk_password_when_not_provided(self):
         host = LinuxHost()
