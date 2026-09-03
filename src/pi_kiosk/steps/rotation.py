@@ -6,6 +6,7 @@ from pi_kiosk.choice import Choice
 from pi_kiosk.display import DISPLAY_CONFIG_KEY, DisplayConfig
 from pi_kiosk.files import read_or_empty, upsert_marked_block
 from pi_kiosk.host import RotationHost
+from pi_kiosk.setup_summary import ROTATION_SUMMARY_KEY, RotationSummary
 from pi_kiosk.ui import UI
 
 if TYPE_CHECKING:
@@ -70,9 +71,16 @@ class RotationStep:
             ["wlr-randr", "--output", output, "--transform", transform],
             check=False,
         )
+        applied_live = getattr(live_result, "returncode", 1) == 0
+        if context is not None:
+            context.state[ROTATION_SUMMARY_KEY] = RotationSummary(
+                choice_id=choice_id,
+                output=output,
+                applied_live=applied_live,
+            )
 
         label = _LABELS[choice_id]
-        if getattr(live_result, "returncode", 1) == 0:
+        if applied_live:
             return (
                 f"Done: screen rotation set to {label.lower()} "
                 f"({command}) and applied live. It will persist on future graphical logins."

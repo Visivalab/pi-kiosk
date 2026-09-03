@@ -296,6 +296,11 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
         self.assertIn("http://127.0.0.1:8080", launcher)
         self.assertIn("/home/pi/.local/share/pi-kiosk/webapp/current", launcher)
         self.assertIn("build", report.lower())
+        self.assertIn("/home/pi/.local/share/pi-kiosk/webapp/current", report)
+        self.assertIn(
+            "Used build/ and deployed it to /home/pi/.local/share/pi-kiosk/webapp/current.",
+            report,
+        )
         self.assertIn(heartbeat_log_tail_command(host.home()), report)
         self.assertEqual(
             host.webapp_progress_messages,
@@ -453,13 +458,15 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
                 artifact_dir="dist",
             )
         )
+        context = WizardContext(host=host, ui=FakeUI())
 
-        WebAppKioskStep().apply(
+        report = WebAppKioskStep().apply(
             host,
             WebAppSource(
                 repo_ref="Visivalab/etruscos_touch",
                 subdir="screen_1_de",
             ),
+            context,
         )
 
         self.assertEqual(
@@ -473,4 +480,8 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
                     ("build", "dist"),
                 )
             ],
+        )
+        self.assertIn(
+            "Done: webapp kiosk deployed from Visivalab/etruscos_touch (subdirectory: screen_1_de/).",
+            report,
         )

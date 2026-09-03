@@ -5,6 +5,13 @@ from typing import TYPE_CHECKING
 from pi_kiosk.display import DISPLAY_CONFIG_KEY, DisplayConfig
 from pi_kiosk.files import normalize_labwc_rc_xml, read_or_empty
 from pi_kiosk.host import TouchHost
+from pi_kiosk.setup_summary import (
+    TOUCH_NOT_DETECTED,
+    TOUCH_NOT_NEEDED,
+    TOUCH_SUMMARY_KEY,
+    TOUCH_UPDATED,
+    TouchSummary,
+)
 from pi_kiosk.steps.rotation import BEGIN as ROTATION_BEGIN
 from pi_kiosk.steps.rotation import END as ROTATION_END
 from pi_kiosk.ui import UI
@@ -44,12 +51,16 @@ class TouchStep:
         context: WizardContext | None = None,
     ) -> str:
         if not host.touchscreen_present():
+            if context is not None:
+                context.state[TOUCH_SUMMARY_KEY] = TouchSummary(outcome=TOUCH_NOT_DETECTED)
             return "Done: no touch screen was detected. Nothing was changed."
 
         display_config = _display_config(host, context)
         output = display_config.output
         transform = display_config.transform
         if transform == "normal":
+            if context is not None:
+                context.state[TOUCH_SUMMARY_KEY] = TouchSummary(outcome=TOUCH_NOT_NEEDED)
             return (
                 "Done: touch screen detected. No mapping needed because the screen is not rotated."
             )
@@ -63,6 +74,11 @@ class TouchStep:
             matrix=matrix,
         )
         host.write_file(path, updated)
+        if context is not None:
+            context.state[TOUCH_SUMMARY_KEY] = TouchSummary(
+                outcome=TOUCH_UPDATED,
+                rotation_label=_TRANSFORM_LABELS[transform],
+            )
         return (
             "Done: touch screen detected. Touch mapping was updated to match "
             f"{_TRANSFORM_LABELS[transform]}."

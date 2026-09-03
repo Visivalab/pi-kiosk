@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from pi_kiosk.host import AutologinHost
+from pi_kiosk.setup_summary import AUTOLOGIN_SUMMARY_KEY
 from pi_kiosk.ui import UI
 
 if TYPE_CHECKING:
@@ -24,6 +25,8 @@ class AutologinStep:
         context: WizardContext | None = None,
     ) -> str:
         host.run(["raspi-config", "nonint", "do_boot_behaviour", "B4"], check=True)
+        if context is not None:
+            context.state[AUTOLOGIN_SUMMARY_KEY] = True
         return (
             "Done: desktop autologin is enabled. "
             "The machine will start the desktop without asking for a password. "

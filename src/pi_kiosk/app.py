@@ -6,6 +6,7 @@ from pi_kiosk.steps.project_kiosk import ProjectKioskStep
 from pi_kiosk.steps.register_totem import RegisterTotemStep
 from pi_kiosk.steps.rotation import RotationStep
 from pi_kiosk.steps.rustdesk import RustDeskStep
+from pi_kiosk.steps.setup_summary import SetupSummaryStep
 from pi_kiosk.steps.touch import TouchStep
 from pi_kiosk.ui import UI
 from pi_kiosk.wizard_context import WizardContext
@@ -28,6 +29,7 @@ def default_steps(host: Host | None = None):
         RustDeskStep(),
         ProjectKioskStep(prompt_for_next_action=False),
         RegisterTotemStep(),
+        SetupSummaryStep(),
         FinalActionStep(),
     )
 

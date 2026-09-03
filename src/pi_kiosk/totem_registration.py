@@ -46,6 +46,13 @@ class TotemRegistrationRequest:
     rustdesk_password: str | None = None
 
 
+@dataclass(frozen=True)
+class TotemRegistrationResult:
+    machine_name: str
+    detail: str
+    report: str
+
+
 def default_config() -> TotemRegistrationConfig | None:
     endpoint_url = os.environ.get("PI_KIOSK_REGISTER_TOTEM_URL", REGISTER_TOTEM_URL).strip()
     token = os.environ.get("PI_KIOSK_REGISTER_TOTEM_TOKEN", REGISTER_TOTEM_TOKEN).strip()
@@ -93,6 +100,15 @@ class TotemRegistrar:
         *,
         progress: Callable[[str], None] | None = None,
     ) -> str:
+        return self.register_result(host, registration, progress=progress).report
+
+    def register_result(
+        self,
+        host: TotemRegistrationHost,
+        registration: TotemRegistrationRequest,
+        *,
+        progress: Callable[[str], None] | None = None,
+    ) -> TotemRegistrationResult:
         config = self.config()
         if config is None:
             raise UserFacingError("Totem registration is not configured.")
@@ -132,17 +148,32 @@ class TotemRegistrar:
                 )
             )
             if warning:
-                return (
-                    f"Done: totem registered for machine {machine_name}. "
-                    f"{warning}"
+                return TotemRegistrationResult(
+                    machine_name=machine_name,
+                    detail=warning,
+                    report=(
+                        f"Done: totem registered for machine {machine_name}. "
+                        f"{warning}"
+                    ),
                 )
-            return (
-                f"Done: totem registered for machine {machine_name}. "
-                "Hourly status reporter installed."
+            return TotemRegistrationResult(
+                machine_name=machine_name,
+                detail="Hourly status reporter installed.",
+                report=(
+                    f"Done: totem registered for machine {machine_name}. "
+                    "Hourly status reporter installed."
+                ),
             )
-        return (
-            f"Done: totem registered for machine {machine_name}. "
+        detail = (
             "Hourly status reporter was not installed because no status endpoint is configured."
+        )
+        return TotemRegistrationResult(
+            machine_name=machine_name,
+            detail=detail,
+            report=(
+                f"Done: totem registered for machine {machine_name}. "
+                f"{detail}"
+            ),
         )
 
 

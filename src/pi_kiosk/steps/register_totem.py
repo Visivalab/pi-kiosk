@@ -3,6 +3,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from pi_kiosk.host import TotemRegistrationHost
+from pi_kiosk.setup_summary import (
+    TOTEM_REGISTRATION_REGISTERED,
+    TOTEM_REGISTRATION_SKIPPED,
+    TOTEM_REGISTRATION_SUMMARY_KEY,
+    TotemRegistrationSummary,
+)
 from pi_kiosk.steps.project_kiosk import ProjectKioskStep
 from pi_kiosk.totem_registration import TotemRegistrar, TotemRegistrationRequest
 from pi_kiosk.ui import UI
@@ -51,6 +57,18 @@ class RegisterTotemStep:
         context: WizardContext | None = None,
     ) -> str:
         if registration is None:
+            if context is not None:
+                context.state[TOTEM_REGISTRATION_SUMMARY_KEY] = TotemRegistrationSummary(
+                    status=TOTEM_REGISTRATION_SKIPPED
+                )
             return "Done: skipped totem registration."
         progress = context.ui.progress if context is not None else None
-        return self._registrar.register(host, registration, progress=progress)
+        result = self._registrar.register_result(host, registration, progress=progress)
+        if context is not None:
+            context.state[TOTEM_REGISTRATION_SUMMARY_KEY] = TotemRegistrationSummary(
+                status=TOTEM_REGISTRATION_REGISTERED,
+                machine_name=result.machine_name,
+                totem_name=registration.totem_name,
+                detail=result.detail,
+            )
+        return result.report

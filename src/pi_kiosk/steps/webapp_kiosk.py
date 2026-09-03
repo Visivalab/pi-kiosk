@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 from pi_kiosk.choice import Choice
 from pi_kiosk.errors import UserFacingError
 from pi_kiosk.host import WebAppHost, WebAppSource
+from pi_kiosk.setup_summary import WEBAPP_SUMMARY_KEY, WebAppSummary
 from pi_kiosk.steps.kiosk_common import (
     CLOSE,
     CURSOR_RC_BEGIN,
@@ -62,6 +63,12 @@ def heartbeat_log_path(home: str) -> str:
 
 def heartbeat_log_tail_command(home: str) -> str:
     return f"tail -f {shlex.quote(heartbeat_log_path(home))}"
+
+
+def _source_label(source: WebAppSource) -> str:
+    if not source.subdir:
+        return source.repo_ref
+    return f"{source.repo_ref} (subdirectory: {source.subdir}/)"
 
 
 def normalize_source(value: str) -> WebAppSource:
@@ -267,6 +274,17 @@ class WebAppKioskStep:
 
         install_kiosk_autostart(host, launcher_path(home))
         install_cursor_keybind(host)
+        if context is not None:
+            context.state[WEBAPP_SUMMARY_KEY] = WebAppSummary(
+                repo_ref=deployment.repo_ref,
+                source_subdir=request.source.subdir,
+                artifact_dir=deployment.artifact_dir,
+                app_dir=deployment.app_dir,
+                launcher_path=launcher_path(home),
+                server_url=action_url(),
+                log_tail_command=log_tail_command(home),
+                heartbeat_log_tail_command=heartbeat_log_tail_command(home),
+            )
 
         log_report = (
             "Attach a terminal to the server logs with: "
@@ -275,9 +293,11 @@ class WebAppKioskStep:
             f"{heartbeat_log_tail_command(home)}."
         )
         report = (
-            f"Done: webapp kiosk deployed from {deployment.repo_ref} using "
-            f"{deployment.artifact_dir}/. Chromium will start on the next graphical login."
-            f" The mouse cursor will hide after idle. {log_report}"
+            f"Done: webapp kiosk deployed from {_source_label(request.source)}. "
+            f"Used {deployment.artifact_dir}/ and deployed it to {deployment.app_dir}. "
+            f"Chromium will start "
+            f"on the next graphical login. The mouse cursor will hide after idle. "
+            f"{log_report}"
         )
         if request.next_action is not None:
             report = f"{report} {self.perform_next_action(host, request.next_action)}"

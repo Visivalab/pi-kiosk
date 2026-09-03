@@ -47,7 +47,7 @@ class WizardTests(unittest.TestCase):
                 NEXT_ACTION_PROMPT,
             ],
         )
-        self.assertEqual(len(reports), 8)
+        self.assertEqual(len(reports), 9)
         self.assertTrue(all(item.lower().startswith("done:") for item in reports))
         self.assertEqual(
             [message for message in ui.messages if message.lower().startswith("done:")],
@@ -61,7 +61,11 @@ class WizardTests(unittest.TestCase):
         self.assertIn("rustdesk", reports[4].lower())
         self.assertIn("kiosk", reports[5].lower())
         self.assertIn("skipped totem registration", reports[6].lower())
-        self.assertIn("simulated autorun", reports[7].lower())
+        self.assertIn("setup summary", reports[7].lower())
+        self.assertIn("rustdesk unattended access", reports[7].lower())
+        self.assertIn("configured automatic mouse hide after idle", reports[7].lower())
+        self.assertIn("totem registration was skipped", reports[7].lower())
+        self.assertIn("simulated autorun", reports[8].lower())
 
         autostart = host.files["/home/pi/.config/labwc/autostart"]
         self.assertIn("--transform 270", autostart)
@@ -84,6 +88,59 @@ class WizardTests(unittest.TestCase):
             host.launched_kiosk_paths,
             ["/home/pi/.config/pi-kiosk/webapp-kiosk.sh"],
         )
+
+    def test_reports_setup_summary_before_prompting_for_final_action(self):
+        class RecordingUI(FakeUI):
+            def __init__(self, answers: dict[str, str]) -> None:
+                super().__init__(answers=answers)
+                self.events: list[tuple[str, str]] = []
+
+            def choose(self, prompt, options):
+                self.events.append(("choose", prompt))
+                return super().choose(prompt, options)
+
+            def prompt(self, prompt):
+                self.events.append(("prompt", prompt))
+                return super().prompt(prompt)
+
+            def confirm(self, prompt, default=True):
+                self.events.append(("confirm", prompt))
+                return super().confirm(prompt, default=default)
+
+            def secret(self, prompt):
+                self.events.append(("secret", prompt))
+                return super().secret(prompt)
+
+            def info(self, message):
+                self.events.append(("info", message))
+                super().info(message)
+
+        host = FakeHost()
+        ui = RecordingUI(
+            answers={
+                "Screen rotation": "clockwise",
+                "RustDesk password": "secret-pass",
+                TYPE_OF_PROJECT_PROMPT: "webapp",
+                "GitHub repo": "Visivalab/demo-app",
+                REGISTER_TOTEM_PROMPT: "no",
+                NEXT_ACTION_PROMPT: "close",
+            }
+        )
+
+        Wizard(host, ui).run()
+
+        summary_index = next(
+            index
+            for index, event in enumerate(ui.events)
+            if event[0] == "info" and event[1].startswith("Done: setup summary")
+        )
+        final_action_prompt_index = next(
+            index
+            for index, event in enumerate(ui.events)
+            if event == ("choose", NEXT_ACTION_PROMPT)
+        )
+
+        self.assertLess(summary_index, final_action_prompt_index)
 
     def test_refuses_to_run_on_a_non_pi(self):
         host = FakeHost(raspberry_pi=False)

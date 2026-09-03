@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from pi_kiosk.files import read_or_empty, upsert_marked_block
 from pi_kiosk.host import NoSleepHost
+from pi_kiosk.setup_summary import NOSLEEP_SUMMARY_KEY
 from pi_kiosk.ui import UI
 
 if TYPE_CHECKING:
@@ -39,6 +40,8 @@ class NoSleepStep:
             IDLE_GUARD,
         )
         host.write_file(path, updated)
+        if context is not None:
+            context.state[NOSLEEP_SUMMARY_KEY] = True
 
         return (
             "Done: screen blanking and sleep are disabled. "
