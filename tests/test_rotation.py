@@ -90,7 +90,12 @@ class ApplyRotationTests(unittest.TestCase):
 
         self.assertEqual(
             context.state["display_config"],
-            DisplayConfig(output="DSI-1", transform="90"),
+            DisplayConfig(
+                output="DSI-1",
+                transform="90",
+                choice_id="counterclockwise",
+                applied_live=True,
+            ),
         )
 
 

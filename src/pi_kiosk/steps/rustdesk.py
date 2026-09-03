@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from pi_kiosk.host import RustDeskHost
-from pi_kiosk.setup_summary import RUSTDESK_SUMMARY_KEY, RustDeskSummary
 from pi_kiosk.ui import UI
 
 if TYPE_CHECKING:
@@ -32,9 +31,7 @@ class RustDeskStep:
         progress = context.ui.progress if context is not None else None
         install = host.install_rustdesk(password, progress=progress)
         if context is not None:
-            context.state[RUSTDESK_SUMMARY_KEY] = RustDeskSummary(
-                rustdesk_id=install.rustdesk_id
-            )
+            context.state[self.id] = install
         return (
             "Done: RustDesk installed and configured. "
             f"ID: {install.rustdesk_id}"

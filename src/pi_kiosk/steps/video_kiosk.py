@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shlex
+from dataclasses import replace
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
@@ -8,7 +9,6 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from pi_kiosk.choice import Choice
 from pi_kiosk.errors import UserFacingError
 from pi_kiosk.host import VideoHost, VideoSource
-from pi_kiosk.setup_summary import VIDEO_SUMMARY_KEY, VideoSummary
 from pi_kiosk.steps.kiosk_common import (
     CLOSE,
     REBOOT,
@@ -142,11 +142,11 @@ class VideoKioskStep:
         )
         install_kiosk_autostart(host, launcher_path(home))
         if context is not None:
-            context.state[VIDEO_SUMMARY_KEY] = VideoSummary(
-                shared_url=request.source.shared_url,
-                file_name=deployment.file_name,
-                video_path=deployment.video_path,
+            context.state[self.id] = replace(
+                deployment,
                 launcher_path=launcher_path(home),
+                autostart_configured=True,
+                fullscreen_loop_configured=True,
             )
 
         report = (

@@ -8,6 +8,13 @@ class WebAppDeployment:
     repo_ref: str
     app_dir: str
     artifact_dir: str
+    launcher_path: str = ""
+    server_url: str = ""
+    log_tail_command: str = ""
+    heartbeat_log_tail_command: str = ""
+    autostart_configured: bool = False
+    chromium_kiosk_configured: bool = False
+    cursor_hide_configured: bool = False
 
 
 @dataclass(frozen=True)
@@ -20,6 +27,9 @@ class WebAppSource:
 class VideoDeployment:
     video_path: str
     file_name: str
+    launcher_path: str = ""
+    autostart_configured: bool = False
+    fullscreen_loop_configured: bool = False
 
 
 @dataclass(frozen=True)
@@ -79,7 +89,7 @@ class RotationHost(UserHost, FileHost, Protocol):
     def run_in_desktop_session(self, argv: list[str], check: bool = True) -> object: ...
 
 
-class AutologinHost(Protocol):
+class AutologinHost(UserHost, Protocol):
     def run(self, argv: list[str], check: bool = True) -> object: ...
 
 

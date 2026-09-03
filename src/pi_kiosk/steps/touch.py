@@ -1,17 +1,11 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from pi_kiosk.display import DISPLAY_CONFIG_KEY, DisplayConfig
+from pi_kiosk.display import DISPLAY_CONFIG_KEY, DisplayConfig, choice_id_for_transform
 from pi_kiosk.files import normalize_labwc_rc_xml, read_or_empty
 from pi_kiosk.host import TouchHost
-from pi_kiosk.setup_summary import (
-    TOUCH_NOT_DETECTED,
-    TOUCH_NOT_NEEDED,
-    TOUCH_SUMMARY_KEY,
-    TOUCH_UPDATED,
-    TouchSummary,
-)
 from pi_kiosk.steps.rotation import BEGIN as ROTATION_BEGIN
 from pi_kiosk.steps.rotation import END as ROTATION_END
 from pi_kiosk.ui import UI
@@ -36,6 +30,13 @@ _CALIBRATION_MATRICES = {
 }
 
 
+@dataclass(frozen=True)
+class TouchResult:
+    touchscreen_detected: bool
+    mapping_updated: bool
+    rotation_label: str = ""
+
+
 class TouchStep:
     id = "touch"
     title = "Touchscreen mapping"
@@ -52,7 +53,10 @@ class TouchStep:
     ) -> str:
         if not host.touchscreen_present():
             if context is not None:
-                context.state[TOUCH_SUMMARY_KEY] = TouchSummary(outcome=TOUCH_NOT_DETECTED)
+                context.state[self.id] = TouchResult(
+                    touchscreen_detected=False,
+                    mapping_updated=False,
+                )
             return "Done: no touch screen was detected. Nothing was changed."
 
         display_config = _display_config(host, context)
@@ -60,7 +64,10 @@ class TouchStep:
         transform = display_config.transform
         if transform == "normal":
             if context is not None:
-                context.state[TOUCH_SUMMARY_KEY] = TouchSummary(outcome=TOUCH_NOT_NEEDED)
+                context.state[self.id] = TouchResult(
+                    touchscreen_detected=True,
+                    mapping_updated=False,
+                )
             return (
                 "Done: touch screen detected. No mapping needed because the screen is not rotated."
             )
@@ -75,8 +82,9 @@ class TouchStep:
         )
         host.write_file(path, updated)
         if context is not None:
-            context.state[TOUCH_SUMMARY_KEY] = TouchSummary(
-                outcome=TOUCH_UPDATED,
+            context.state[self.id] = TouchResult(
+                touchscreen_detected=True,
+                mapping_updated=True,
                 rotation_label=_TRANSFORM_LABELS[transform],
             )
         return (
@@ -95,7 +103,14 @@ def _display_config(
             return candidate
 
     output, transform = _read_rotation_state(host)
-    return DisplayConfig(output=output, transform=transform)
+    config = DisplayConfig(
+        output=output,
+        transform=transform,
+        choice_id=choice_id_for_transform(transform),
+    )
+    if context is not None:
+        context.state[DISPLAY_CONFIG_KEY] = config
+    return config
 
 
 def _read_rotation_state(host: TouchHost) -> tuple[str, str]:

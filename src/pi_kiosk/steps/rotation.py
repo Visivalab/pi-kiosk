@@ -6,7 +6,6 @@ from pi_kiosk.choice import Choice
 from pi_kiosk.display import DISPLAY_CONFIG_KEY, DisplayConfig
 from pi_kiosk.files import read_or_empty, upsert_marked_block
 from pi_kiosk.host import RotationHost
-from pi_kiosk.setup_summary import ROTATION_SUMMARY_KEY, RotationSummary
 from pi_kiosk.ui import UI
 
 if TYPE_CHECKING:
@@ -54,8 +53,6 @@ class RotationStep:
     ) -> str:
         transform = transform_for(choice_id)
         output = host.detect_wayland_output() or DEFAULT_OUTPUT
-        if context is not None:
-            context.state[DISPLAY_CONFIG_KEY] = DisplayConfig(output=output, transform=transform)
         command = f"wlr-randr --output {output} --transform {transform}"
 
         path = f"{host.home()}/.config/labwc/autostart"
@@ -73,9 +70,10 @@ class RotationStep:
         )
         applied_live = getattr(live_result, "returncode", 1) == 0
         if context is not None:
-            context.state[ROTATION_SUMMARY_KEY] = RotationSummary(
-                choice_id=choice_id,
+            context.state[DISPLAY_CONFIG_KEY] = DisplayConfig(
                 output=output,
+                transform=transform,
+                choice_id=choice_id,
                 applied_live=applied_live,
             )
 

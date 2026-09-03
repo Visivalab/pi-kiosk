@@ -71,7 +71,12 @@ class TouchStepTests(unittest.TestCase):
     def test_prefers_display_config_from_wizard_context(self):
         host = FakeHost(touchscreen=True)
         context = WizardContext(host=host, ui=FakeUI())
-        context.state["display_config"] = DisplayConfig(output="DSI-1", transform="270")
+        context.state["display_config"] = DisplayConfig(
+            output="DSI-1",
+            transform="270",
+            choice_id="clockwise",
+            applied_live=True,
+        )
 
         report = TouchStep().apply(host, context=context)
 
@@ -79,6 +84,23 @@ class TouchStepTests(unittest.TestCase):
         self.assertIn('<touch mapToOutput="DSI-1" />', content)
         self.assertIn("<calibrationMatrix>0 1 0 -1 0 1</calibrationMatrix>", content)
         self.assertIn("clockwise", report.lower())
+
+    def test_records_fallback_display_config_in_wizard_context(self):
+        host = FakeHost(touchscreen=True)
+        RotationStep().apply(host, "counterclockwise")
+        context = WizardContext(host=host, ui=FakeUI())
+
+        TouchStep().apply(host, context=context)
+
+        self.assertEqual(
+            context.state["display_config"],
+            DisplayConfig(
+                output="HDMI-A-1",
+                transform="90",
+                choice_id="counterclockwise",
+                applied_live=False,
+            ),
+        )
 
 
 class UpsertTouchBlockTests(unittest.TestCase):
