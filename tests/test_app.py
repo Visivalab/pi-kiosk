@@ -19,6 +19,11 @@ from pi_kiosk.totem_registration import (
 )
 from pi_kiosk.wizard_context import WizardContext
 
+DEMO_RELEASE_URL = (
+    "https://github.com/Visivalab/demo-app/releases/download/latest/demo-app-dist.zip"
+)
+RELEASE_URL_PROMPT = "Webapp release zip URL"
+
 
 class WizardTests(unittest.TestCase):
     def test_asks_rotation_then_reports_each_completed_step(self):
@@ -28,7 +33,7 @@ class WizardTests(unittest.TestCase):
                 "Screen rotation": "clockwise",
                 "RustDesk password": "secret-pass",
                 TYPE_OF_PROJECT_PROMPT: "webapp",
-                "GitHub repo": "Visivalab/demo-app",
+                RELEASE_URL_PROMPT: DEMO_RELEASE_URL,
                 REGISTER_TOTEM_PROMPT: "no",
                 NEXT_ACTION_PROMPT: "simulate",
             }
@@ -42,7 +47,7 @@ class WizardTests(unittest.TestCase):
                 "Screen rotation",
                 "RustDesk password",
                 TYPE_OF_PROJECT_PROMPT,
-                "GitHub repo",
+                RELEASE_URL_PROMPT,
                 REGISTER_TOTEM_PROMPT,
                 NEXT_ACTION_PROMPT,
             ],
@@ -81,7 +86,7 @@ class WizardTests(unittest.TestCase):
         )
         self.assertEqual(
             host.webapp_deploy_requests,
-            [(WebAppSource(repo_ref="Visivalab/demo-app"), ("build", "dist"))],
+            [WebAppSource(release_url=DEMO_RELEASE_URL)],
         )
         self.assertEqual(host.rustdesk_passwords, ["secret-pass"])
         self.assertEqual(
@@ -121,7 +126,7 @@ class WizardTests(unittest.TestCase):
                 "Screen rotation": "clockwise",
                 "RustDesk password": "secret-pass",
                 TYPE_OF_PROJECT_PROMPT: "webapp",
-                "GitHub repo": "Visivalab/demo-app",
+                RELEASE_URL_PROMPT: DEMO_RELEASE_URL,
                 REGISTER_TOTEM_PROMPT: "no",
                 NEXT_ACTION_PROMPT: "close",
             }
@@ -149,7 +154,7 @@ class WizardTests(unittest.TestCase):
                 "Screen rotation": "none",
                 "RustDesk password": "secret-pass",
                 TYPE_OF_PROJECT_PROMPT: "webapp",
-                "GitHub repo": "Visivalab/demo-app",
+                RELEASE_URL_PROMPT: DEMO_RELEASE_URL,
                 REGISTER_TOTEM_PROMPT: "no",
             }
         )
@@ -167,7 +172,7 @@ class WizardTests(unittest.TestCase):
                 "Screen rotation": "none",
                 "RustDesk password": "secret-pass",
                 TYPE_OF_PROJECT_PROMPT: "webapp",
-                "GitHub repo": "Visivalab/demo-app",
+                RELEASE_URL_PROMPT: DEMO_RELEASE_URL,
                 REGISTER_TOTEM_PROMPT: "yes",
                 "Totem name": "Hall Screen",
                 "Totem description": "",
@@ -239,7 +244,7 @@ class RegisterTotemStepTests(unittest.TestCase):
                 FakeUI(
                     answers={
                         TYPE_OF_PROJECT_PROMPT: "webapp",
-                        "GitHub repo": "Visivalab/demo-app",
+                        RELEASE_URL_PROMPT: DEMO_RELEASE_URL,
                     }
                 )
             ),
@@ -261,7 +266,7 @@ class FinalActionStepTests(unittest.TestCase):
                 FakeUI(
                     answers={
                         TYPE_OF_PROJECT_PROMPT: "webapp",
-                        "GitHub repo": "Visivalab/demo-app",
+                        RELEASE_URL_PROMPT: DEMO_RELEASE_URL,
                     }
                 )
             ),

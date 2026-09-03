@@ -5,9 +5,8 @@ from typing import Protocol
 
 @dataclass(frozen=True)
 class WebAppDeployment:
-    repo_ref: str
+    source_url: str
     app_dir: str
-    artifact_dir: str
     launcher_path: str = ""
     server_url: str = ""
     log_tail_command: str = ""
@@ -19,8 +18,7 @@ class WebAppDeployment:
 
 @dataclass(frozen=True)
 class WebAppSource:
-    repo_ref: str
-    subdir: str = ""
+    release_url: str
 
 
 @dataclass(frozen=True)
@@ -125,7 +123,6 @@ class WebAppHost(UserHost, FileHost, PackageHost, WebAppLaunchHost, Protocol):
     def deploy_webapp(
         self,
         source: WebAppSource,
-        artifact_dirs: tuple[str, ...],
         progress: Callable[[str], None] | None = None,
     ) -> WebAppDeployment: ...
 
@@ -214,7 +211,6 @@ class Host(Protocol):
     def deploy_webapp(
         self,
         source: WebAppSource,
-        artifact_dirs: tuple[str, ...],
         progress: Callable[[str], None] | None = None,
     ) -> WebAppDeployment: ...
 

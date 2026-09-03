@@ -291,7 +291,15 @@ class ApplyVideoKioskStepTests(unittest.TestCase):
 
         from pi_kiosk.steps.webapp_kiosk import WebAppKioskStep, launcher_path as webapp_launcher_path
 
-        WebAppKioskStep().apply(host, WebAppSource(repo_ref="Visivalab/demo-app"))
+        WebAppKioskStep().apply(
+            host,
+            WebAppSource(
+                release_url=(
+                    "https://github.com/Visivalab/demo-app/releases/download/latest/"
+                    "demo-app-dist.zip"
+                )
+            ),
+        )
         VideoKioskStep().apply(
             host,
             VideoSource(

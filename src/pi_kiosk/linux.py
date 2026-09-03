@@ -7,15 +7,16 @@ import pwd
 import shlex
 import shutil
 import socket
+import stat
 import subprocess
-import tarfile
 import tempfile
 import time
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Callable
 from urllib import error, request
 from urllib.parse import unquote, urlparse
+import zipfile
 
 from pi_kiosk.detect import looks_like_raspberry_pi
 from pi_kiosk.errors import UserFacingError
@@ -59,10 +60,9 @@ class WebAppDeployer:
     def deploy(
         self,
         source: WebAppSource,
-        artifact_dirs: tuple[str, ...],
         progress: Callable[[str], None] | None = None,
     ) -> WebAppDeployment:
-        self._host._report_progress(progress, "Resolving GitHub repo")
+        self._host._report_progress(progress, "Preparing webapp release download")
         app_root = Path(self._host.home()) / ".local" / "share" / "pi-kiosk" / "webapp"
         current_dir = app_root / "current"
         app_root.mkdir(parents=True, exist_ok=True)
@@ -70,33 +70,33 @@ class WebAppDeployer:
 
         with tempfile.TemporaryDirectory() as tmp:
             temp_root = Path(tmp)
-            self._host._report_progress(progress, "Downloading webapp archive")
-            extracted_root = self._host._download_github_archive(source.repo_ref, temp_root)
+            archive_path = temp_root / "webapp-release.zip"
+            self._host._report_progress(progress, "Downloading webapp release zip")
+            self._host._download_file(
+                source.release_url,
+                archive_path,
+                description="webapp release zip",
+                progress=progress,
+            )
             self._host._report_progress(progress, "Extracting webapp files")
-            source_root = self._host._resolve_source_root(extracted_root, source)
-            artifact_path = self._host._find_artifact_dir(source_root, artifact_dirs)
-            if artifact_path is None:
-                names = " or ".join(f"{name}/" for name in artifact_dirs)
-                raise UserFacingError(
-                    f"Repository {source.repo_ref} did not contain {names} "
-                    f"in {source.subdir or 'the repo root'}. "
-                    "Commit the built webapp and run the wizard again."
-                )
+            extracted_root = temp_root / "webapp-release"
+            extracted_root.mkdir(parents=True, exist_ok=True)
+            self._host._extract_webapp_zip(archive_path, extracted_root)
+            source_root = self._host._resolve_webapp_root(extracted_root)
             stage_dir = app_root / "next"
             if stage_dir.exists():
                 shutil.rmtree(stage_dir)
             stage_dir.mkdir(parents=True, exist_ok=True)
-            self._host._report_progress(progress, "Deploying build output")
-            self._host._copy_directory_contents(artifact_path, stage_dir)
+            self._host._report_progress(progress, "Deploying webapp files")
+            self._host._copy_directory_contents(source_root, stage_dir)
             if current_dir.exists():
                 shutil.rmtree(current_dir)
             stage_dir.replace(current_dir)
 
         self._host._own_tree(current_dir)
         return WebAppDeployment(
-            repo_ref=source.repo_ref,
+            source_url=source.release_url,
             app_dir=str(current_dir),
-            artifact_dir=artifact_path.name,
         )
 
 
@@ -472,10 +472,9 @@ class LinuxHost:
     def deploy_webapp(
         self,
         source: WebAppSource,
-        artifact_dirs: tuple[str, ...],
         progress: Callable[[str], None] | None = None,
     ) -> WebAppDeployment:
-        return self._webapp_deployer.deploy(source, artifact_dirs, progress)
+        return self._webapp_deployer.deploy(source, progress)
 
     def chromium_command(self) -> str | None:
         for candidate in ("chromium-browser", "chromium"):
@@ -649,31 +648,6 @@ class LinuxHost:
             env["TERM"] = term
         return env
 
-    def _download_github_archive(self, repo_ref: str, target_dir: Path) -> Path:
-        owner, repo = repo_ref.split("/", 1)
-        default_branch = self._github_default_branch(owner, repo)
-        archive_url = (
-            f"https://codeload.github.com/{owner}/{repo}/tar.gz/refs/heads/{default_branch}"
-        )
-        archive_path = target_dir / "repo.tar.gz"
-        self._download_file(archive_url, archive_path, description="webapp archive")
-        with tarfile.open(archive_path, "r:gz") as bundle:
-            bundle.extractall(target_dir)
-        roots = [entry for entry in target_dir.iterdir() if entry.is_dir()]
-        if not roots:
-            raise UserFacingError(f"Downloaded archive for {repo_ref} was empty.")
-        return roots[0]
-
-    def _github_default_branch(self, owner: str, repo: str) -> str:
-        api_url = f"https://api.github.com/repos/{owner}/{repo}"
-        payload = self._read_json(api_url)
-        default_branch = payload.get("default_branch")
-        if not isinstance(default_branch, str) or not default_branch:
-            raise UserFacingError(
-                f"Could not determine the default branch for {owner}/{repo}."
-            )
-        return default_branch
-
     def _read_json(self, url: str) -> dict[str, object]:
         headers = {
             "Accept": "application/vnd.github+json",
@@ -685,15 +659,10 @@ class LinuxHost:
                 return json.load(response)
         except error.HTTPError as exc:
             if exc.code == 404:
-                raise UserFacingError(
-                    "GitHub repo was not found or is not public. "
-                    "Use a public repo for this version of the wizard."
-                ) from exc
+                raise UserFacingError("GitHub resource was not found.") from exc
             raise UserFacingError(f"GitHub API request failed with HTTP {exc.code}.") from exc
         except error.URLError as exc:
-            raise UserFacingError(
-                f"Could not reach GitHub to download the webapp: {exc.reason}."
-            ) from exc
+            raise UserFacingError(f"Could not reach GitHub: {exc.reason}.") from exc
 
     def _download_file(
         self,
@@ -784,27 +753,56 @@ class LinuxHost:
             bytes_written += len(chunk)
         return bytes_written
 
-    def _find_artifact_dir(self, root: Path, artifact_dirs: tuple[str, ...]) -> Path | None:
-        for name in artifact_dirs:
-            candidate = root / name
-            if candidate.is_dir():
-                return candidate
-        return None
+    def _extract_webapp_zip(self, archive_path: Path, target_dir: Path) -> None:
+        try:
+            with zipfile.ZipFile(archive_path) as bundle:
+                members = bundle.infolist()
+                if not members:
+                    raise UserFacingError("Downloaded webapp release zip was empty.")
 
-    def _resolve_source_root(self, extracted_root: Path, source: WebAppSource) -> Path:
-        if not source.subdir:
-            return extracted_root
+                for member in members:
+                    if _zip_info_is_symlink(member):
+                        raise UserFacingError(
+                            "Webapp release zip contained a symbolic link, which is not supported."
+                        )
 
-        relative = Path(source.subdir)
-        if relative.is_absolute() or ".." in relative.parts:
-            raise UserFacingError("Webapp subdirectory must stay inside the repo.")
+                    relative = _safe_zip_member_path(member.filename)
+                    if relative is None:
+                        continue
 
-        source_root = extracted_root / relative
-        if not source_root.is_dir():
+                    destination = target_dir / relative
+                    if member.is_dir():
+                        destination.mkdir(parents=True, exist_ok=True)
+                        continue
+
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    with bundle.open(member) as source_stream, destination.open("wb") as target_stream:
+                        shutil.copyfileobj(source_stream, target_stream)
+        except zipfile.BadZipFile as exc:
+            raise UserFacingError("Downloaded webapp release zip was not a valid zip archive.") from exc
+        except (OSError, RuntimeError) as exc:
+            raise UserFacingError(f"Could not extract the webapp release zip: {exc}.") from exc
+
+    def _resolve_webapp_root(self, extracted_root: Path) -> Path:
+        current_root = extracted_root
+        while True:
+            entries = [
+                entry for entry in current_root.iterdir() if not _ignore_webapp_bundle_entry(entry.name)
+            ]
+            if not entries:
+                raise UserFacingError("Downloaded webapp release zip was empty.")
+
+            if (current_root / "index.html").is_file():
+                return current_root
+
+            if len(entries) == 1 and entries[0].is_dir():
+                current_root = entries[0]
+                continue
+
             raise UserFacingError(
-                f"Subdirectory {source.subdir} was not found in {source.repo_ref}."
+                "Webapp release zip did not contain index.html at the archive root. "
+                "Package the built webapp files directly in the zip and run the wizard again."
             )
-        return source_root
 
     def _copy_directory_contents(self, source: Path, target: Path) -> None:
         for child in source.iterdir():
@@ -946,6 +944,32 @@ def _read_device_tree_model() -> str | None:
             continue
         return raw.split(b"\0", 1)[0].decode("utf-8", errors="replace")
     return None
+
+
+def _safe_zip_member_path(name: str) -> Path | None:
+    path = PurePosixPath(name)
+    if path.is_absolute():
+        raise UserFacingError("Webapp release zip contained an unsafe absolute path.")
+
+    parts: list[str] = []
+    for part in path.parts:
+        if part in {"", "."}:
+            continue
+        if part == "..":
+            raise UserFacingError("Webapp release zip contained an unsafe parent path.")
+        parts.append(part)
+
+    if not parts:
+        return None
+    return Path(*parts)
+
+
+def _zip_info_is_symlink(info: zipfile.ZipInfo) -> bool:
+    return stat.S_ISLNK(info.external_attr >> 16)
+
+
+def _ignore_webapp_bundle_entry(name: str) -> bool:
+    return name in {"__MACOSX", ".DS_Store"}
 
 
 def _machine_id() -> str | None:

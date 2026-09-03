@@ -18,6 +18,11 @@ from pi_kiosk.totem_registration import (
     TOTEM_TYPE_PROMPT,
 )
 
+DEMO_RELEASE_URL = (
+    "https://github.com/Visivalab/demo-app/releases/download/latest/demo-app-dist.zip"
+)
+RELEASE_URL_PROMPT = "Webapp release zip URL"
+
 
 class RootGuardTests(unittest.TestCase):
     def test_refuses_without_root(self):
@@ -46,7 +51,7 @@ class CliTests(unittest.TestCase):
                     "Screen rotation": "none",
                     "RustDesk password": "secret-pass",
                     TYPE_OF_PROJECT_PROMPT: "webapp",
-                    "GitHub repo": "Visivalab/demo-app",
+                    RELEASE_URL_PROMPT: DEMO_RELEASE_URL,
                     REGISTER_TOTEM_PROMPT: "no",
                     NEXT_ACTION_PROMPT: "close",
                 }

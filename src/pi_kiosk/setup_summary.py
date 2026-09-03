@@ -120,13 +120,11 @@ def _webapp_lines(context: WizardContext) -> list[str]:
         return []
 
     source = _project_source(context, WebAppSource)
-    source_label = deployment.repo_ref
+    source_label = deployment.source_url
     if source is not None:
         source_label = _format_webapp_source(source)
 
     lines = [_checked(f"Downloaded the webapp from {source_label}")]
-    if deployment.artifact_dir:
-        lines.append(_checked(f"Found build output in {deployment.artifact_dir}/"))
     if deployment.app_dir:
         lines.append(_checked(f"Deployed the webapp to {deployment.app_dir}"))
     if deployment.launcher_path:
@@ -201,9 +199,7 @@ def _project_source(context: WizardContext, expected_type: type[WebAppSource | V
 
 
 def _format_webapp_source(source: WebAppSource) -> str:
-    if not source.subdir:
-        return source.repo_ref
-    return f"{source.repo_ref} (subdirectory: {source.subdir}/)"
+    return source.release_url
 
 
 def _checked(message: str) -> str:

@@ -11,6 +11,10 @@ from pi_kiosk.host import (
     WebAppSource,
 )
 
+DEMO_RELEASE_URL = (
+    "https://github.com/Visivalab/demo-app/releases/download/latest/demo-app-dist.zip"
+)
+
 
 @dataclass
 class CommandResult:
@@ -54,9 +58,8 @@ class FakeHost:
         self.root = root
         self.desktop_session_returncode = desktop_session_returncode
         self.deployed_webapp = deployed_webapp or WebAppDeployment(
-            repo_ref="Visivalab/demo-app",
+            source_url=DEMO_RELEASE_URL,
             app_dir=f"{home}/.local/share/pi-kiosk/webapp/current",
-            artifact_dir="build",
         )
         self.deployed_video = deployed_video or VideoDeployment(
             video_path=f"{home}/.local/share/pi-kiosk/video/current/demo.mp4",
@@ -75,7 +78,7 @@ class FakeHost:
         self.rustdesk_present = rustdesk_present
         self.commands: list[list[str]] = []
         self.desktop_session_commands: list[list[str]] = []
-        self.webapp_deploy_requests: list[tuple[WebAppSource, tuple[str, ...]]] = []
+        self.webapp_deploy_requests: list[WebAppSource] = []
         self.webapp_progress_messages: list[str] = []
         self.video_deploy_requests: list[VideoSource] = []
         self.video_progress_messages: list[str] = []
@@ -141,16 +144,15 @@ class FakeHost:
     def deploy_webapp(
         self,
         source: WebAppSource,
-        artifact_dirs: tuple[str, ...],
         progress: Callable[[str], None] | None = None,
     ) -> WebAppDeployment:
-        self.webapp_deploy_requests.append((source, artifact_dirs))
+        self.webapp_deploy_requests.append(source)
         if progress is not None:
             for message in (
-                "Resolving GitHub repo",
-                "Downloading webapp archive",
+                "Preparing webapp release download",
+                "Downloading webapp release zip",
                 "Extracting webapp files",
-                "Deploying build output",
+                "Deploying webapp files",
             ):
                 progress(message)
                 self.webapp_progress_messages.append(message)

@@ -1,7 +1,9 @@
 import json
+import stat
 import subprocess
 import tempfile
 import unittest
+import zipfile
 from io import BytesIO
 from pathlib import Path
 from unittest import mock
@@ -204,6 +206,132 @@ class LinuxHostTests(unittest.TestCase):
             self.assertTrue(host.rustdesk_installed())
         with mock.patch("shutil.which", return_value=None):
             self.assertFalse(host.rustdesk_installed())
+
+    def test_resolve_webapp_root_uses_single_wrapping_directory(self):
+        host = LinuxHost()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            extracted_root = Path(tmp) / "webapp"
+            app_root = extracted_root / "screen_1_de-dist"
+            app_root.mkdir(parents=True)
+            (app_root / "index.html").write_text("<html></html>", encoding="utf-8")
+
+            resolved = host._resolve_webapp_root(extracted_root)
+
+        self.assertEqual(resolved, app_root)
+
+    def test_resolve_webapp_root_rejects_missing_index_html(self):
+        host = LinuxHost()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            extracted_root = Path(tmp) / "webapp"
+            extracted_root.mkdir(parents=True)
+            (extracted_root / "assets").mkdir()
+            (extracted_root / "app.js").write_text("console.log('hi')", encoding="utf-8")
+
+            with self.assertRaises(UserFacingError):
+                host._resolve_webapp_root(extracted_root)
+
+    def test_extract_webapp_zip_happy_path_preserves_files(self):
+        host = LinuxHost()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_path = Path(tmp) / "webapp.zip"
+            extracted_root = Path(tmp) / "out"
+            extracted_root.mkdir()
+            with zipfile.ZipFile(archive_path, "w") as bundle:
+                bundle.writestr("screen_1_de-dist/index.html", "<html></html>")
+                bundle.writestr("screen_1_de-dist/assets/app.js", "console.log('hi')")
+
+            host._extract_webapp_zip(archive_path, extracted_root)
+
+            self.assertEqual(
+                (extracted_root / "screen_1_de-dist" / "index.html").read_text(encoding="utf-8"),
+                "<html></html>",
+            )
+            self.assertEqual(
+                (extracted_root / "screen_1_de-dist" / "assets" / "app.js").read_text(
+                    encoding="utf-8"
+                ),
+                "console.log('hi')",
+            )
+
+    def test_extract_webapp_zip_rejects_absolute_paths(self):
+        host = LinuxHost()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_path = Path(tmp) / "webapp.zip"
+            extracted_root = Path(tmp) / "out"
+            extracted_root.mkdir()
+            with zipfile.ZipFile(archive_path, "w") as bundle:
+                bundle.writestr("/etc/passwd", "nope")
+
+            with self.assertRaises(UserFacingError):
+                host._extract_webapp_zip(archive_path, extracted_root)
+
+    def test_extract_webapp_zip_rejects_parent_traversal_paths(self):
+        host = LinuxHost()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_path = Path(tmp) / "webapp.zip"
+            extracted_root = Path(tmp) / "out"
+            extracted_root.mkdir()
+            with zipfile.ZipFile(archive_path, "w") as bundle:
+                bundle.writestr("../escape.txt", "nope")
+
+            with self.assertRaises(UserFacingError):
+                host._extract_webapp_zip(archive_path, extracted_root)
+
+    def test_extract_webapp_zip_rejects_symbolic_links(self):
+        host = LinuxHost()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_path = Path(tmp) / "webapp.zip"
+            extracted_root = Path(tmp) / "out"
+            extracted_root.mkdir()
+            link = zipfile.ZipInfo("current")
+            link.external_attr = (stat.S_IFLNK | 0o777) << 16
+            with zipfile.ZipFile(archive_path, "w") as bundle:
+                bundle.writestr(link, "screen_1_de-dist")
+
+            with self.assertRaises(UserFacingError):
+                host._extract_webapp_zip(archive_path, extracted_root)
+
+    def test_extract_webapp_zip_wraps_oserror_as_user_facing_error(self):
+        host = LinuxHost()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_path = Path(tmp) / "webapp.zip"
+            extracted_root = Path(tmp) / "out"
+            extracted_root.mkdir()
+            with zipfile.ZipFile(archive_path, "w") as bundle:
+                bundle.writestr("index.html", "<html></html>")
+
+            with mock.patch("pi_kiosk.linux.shutil.copyfileobj", side_effect=OSError("disk full")):
+                with self.assertRaises(UserFacingError):
+                    host._extract_webapp_zip(archive_path, extracted_root)
+
+    def test_extract_webapp_zip_wraps_runtimeerror_as_user_facing_error(self):
+        host = LinuxHost()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_path = Path(tmp) / "webapp.zip"
+            extracted_root = Path(tmp) / "out"
+            extracted_root.mkdir()
+            with zipfile.ZipFile(archive_path, "w") as bundle:
+                bundle.writestr("index.html", "<html></html>")
+
+            with mock.patch(
+                "pi_kiosk.linux.shutil.copyfileobj", side_effect=RuntimeError("zip stream failed")
+            ):
+                with self.assertRaises(UserFacingError):
+                    host._extract_webapp_zip(archive_path, extracted_root)
+
+    def test_read_json_wraps_network_errors_with_generic_github_message(self):
+        host = LinuxHost()
+        with mock.patch("urllib.request.urlopen", side_effect=error.URLError("offline")):
+            with self.assertRaisesRegex(UserFacingError, "Could not reach GitHub: offline."):
+                host._read_json("https://api.github.com/repos/rustdesk/rustdesk/releases/latest")
 
     def test_configure_rustdesk_password_persists_without_reinstalling(self):
         host = LinuxHost()

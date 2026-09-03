@@ -8,21 +8,26 @@ from pi_kiosk.steps.project_kiosk import NEXT_ACTION_PROMPT, ProjectKioskStep, T
 from pi_kiosk.steps.video_kiosk import VIDEO_NEXT_ACTION_PROMPT
 from pi_kiosk.wizard_context import WizardContext
 
+DEMO_RELEASE_URL = (
+    "https://github.com/Visivalab/demo-app/releases/download/latest/demo-app-dist.zip"
+)
+RELEASE_URL_PROMPT = "Webapp release zip URL"
+
 
 class AskProjectKioskStepTests(unittest.TestCase):
-    def test_asks_for_github_repo_when_webapp_is_selected(self):
+    def test_asks_for_release_zip_url_when_webapp_is_selected(self):
         ui = FakeUI(
             answers={
                 TYPE_OF_PROJECT_PROMPT: "webapp",
-                "GitHub repo": "Visivalab/demo-app",
+                RELEASE_URL_PROMPT: DEMO_RELEASE_URL,
             }
         )
 
         answer = ProjectKioskStep(prompt_for_next_action=False).ask(ui)
 
         self.assertEqual(answer.project_type, "webapp")
-        self.assertEqual(answer.source, WebAppSource(repo_ref="Visivalab/demo-app"))
-        self.assertEqual(ui.prompts, [TYPE_OF_PROJECT_PROMPT, "GitHub repo"])
+        self.assertEqual(answer.source, WebAppSource(release_url=DEMO_RELEASE_URL))
+        self.assertEqual(ui.prompts, [TYPE_OF_PROJECT_PROMPT, RELEASE_URL_PROMPT])
 
     def test_asks_for_dropbox_link_when_video_is_selected(self):
         ui = FakeUI(
@@ -51,7 +56,7 @@ class ApplyProjectKioskStepTests(unittest.TestCase):
         ui = FakeUI(
             answers={
                 TYPE_OF_PROJECT_PROMPT: "webapp",
-                "GitHub repo": "Visivalab/demo-app",
+                RELEASE_URL_PROMPT: DEMO_RELEASE_URL,
                 NEXT_ACTION_PROMPT: "close",
             }
         )
@@ -62,7 +67,7 @@ class ApplyProjectKioskStepTests(unittest.TestCase):
 
         self.assertEqual(
             host.webapp_deploy_requests,
-            [(WebAppSource(repo_ref="Visivalab/demo-app"), ("build", "dist"))],
+            [WebAppSource(release_url=DEMO_RELEASE_URL)],
         )
         self.assertEqual(host.video_deploy_requests, [])
         self.assertIn("webapp kiosk", report.lower())

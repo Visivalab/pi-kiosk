@@ -18,6 +18,15 @@ from pi_kiosk.steps.webapp_kiosk import (
 )
 from pi_kiosk.wizard_context import WizardContext
 
+DEMO_RELEASE_URL = (
+    "https://github.com/Visivalab/demo-app/releases/download/latest/demo-app-dist.zip"
+)
+SCREEN_RELEASE_URL = (
+    "https://github.com/Visivalab/etruscos_touch/releases/download/"
+    "screen-1-de-latest/screen_1_de-dist.zip"
+)
+RELEASE_URL_PROMPT = "Webapp release zip URL"
+
 
 class AskWebAppKioskStepTests(unittest.TestCase):
     def test_close_choice_matches_server_only_behavior(self):
@@ -26,92 +35,51 @@ class AskWebAppKioskStepTests(unittest.TestCase):
         self.assertIn("app server", close_choice.label.lower())
         self.assertIn("8080", close_choice.label)
 
-    def test_accepts_owner_repo_input(self):
-        ui = FakeUI(answers={"GitHub repo": "Visivalab/demo-app"})
+    def test_accepts_github_release_zip_url(self):
+        ui = FakeUI(answers={RELEASE_URL_PROMPT: DEMO_RELEASE_URL})
 
         answer = WebAppKioskStep(prompt_for_next_action=False).ask(ui)
 
-        self.assertEqual(answer.source, WebAppSource(repo_ref="Visivalab/demo-app"))
+        self.assertEqual(answer.source, WebAppSource(release_url=DEMO_RELEASE_URL))
         self.assertIsNone(answer.next_action)
 
-    def test_normalizes_full_github_url(self):
-        ui = FakeUI(answers={"GitHub repo": "https://github.com/Visivalab/demo-app/"})
-
-        answer = WebAppKioskStep(prompt_for_next_action=False).ask(ui)
-
-        self.assertEqual(answer.source, WebAppSource(repo_ref="Visivalab/demo-app"))
-        self.assertIsNone(answer.next_action)
-
-    def test_normalizes_github_url_without_scheme(self):
-        source = normalize_source("github.com/Visivalab/demo-app")
-
-        self.assertEqual(source, WebAppSource(repo_ref="Visivalab/demo-app"))
-
-    def test_normalizes_github_url_without_scheme_and_ignores_query_and_fragment(self):
-        source = normalize_source("github.com/Visivalab/demo-app?tab=readme-ov-file#readme")
-
-        self.assertEqual(source, WebAppSource(repo_ref="Visivalab/demo-app"))
-
-    def test_normalizes_tree_url_without_scheme_with_subdirectory(self):
+    def test_normalizes_release_url_without_scheme(self):
         source = normalize_source(
-            "github.com/Visivalab/etruscos_touch/tree/main/screen_1_de"
+            "github.com/Visivalab/demo-app/releases/download/latest/demo-app-dist.zip"
         )
 
-        self.assertEqual(
-            source,
-            WebAppSource(
-                repo_ref="Visivalab/etruscos_touch",
-                subdir="screen_1_de",
-            ),
-        )
+        self.assertEqual(source, WebAppSource(release_url=DEMO_RELEASE_URL))
 
-    def test_normalizes_tree_url_without_scheme_with_subdirectory_and_ignores_query(self):
+    def test_normalizes_release_url_and_ignores_query_and_fragment(self):
+        source = normalize_source(f"{DEMO_RELEASE_URL}?download=1#asset")
+
+        self.assertEqual(source, WebAppSource(release_url=DEMO_RELEASE_URL))
+
+    def test_normalizes_latest_release_download_url(self):
         source = normalize_source(
-            "github.com/Visivalab/etruscos_touch/tree/main/screen_1_de?plain=1"
+            "https://github.com/Visivalab/demo-app/releases/latest/download/demo-app-dist.zip"
         )
 
         self.assertEqual(
             source,
             WebAppSource(
-                repo_ref="Visivalab/etruscos_touch",
-                subdir="screen_1_de",
+                release_url=(
+                    "https://github.com/Visivalab/demo-app/releases/latest/download/"
+                    "demo-app-dist.zip"
+                )
             ),
         )
 
-    def test_normalizes_owner_repo_tree_shorthand_with_subdirectory(self):
-        source = normalize_source("Visivalab/etruscos_touch/tree/main/screen_1_de")
+    def test_accepts_release_url_for_nested_project_builds(self):
+        source = normalize_source(SCREEN_RELEASE_URL)
 
-        self.assertEqual(
-            source,
-            WebAppSource(
-                repo_ref="Visivalab/etruscos_touch",
-                subdir="screen_1_de",
-            ),
-        )
-
-    def test_normalizes_owner_repo_shorthand_and_ignores_query_and_fragment(self):
-        source = normalize_source("Visivalab/demo-app?tab=readme-ov-file#readme")
-
-        self.assertEqual(source, WebAppSource(repo_ref="Visivalab/demo-app"))
-
-    def test_normalizes_tree_url_with_subdirectory(self):
-        source = normalize_source(
-            "https://github.com/Visivalab/etruscos_touch/tree/main/screen_1_de"
-        )
-
-        self.assertEqual(
-            source,
-            WebAppSource(
-                repo_ref="Visivalab/etruscos_touch",
-                subdir="screen_1_de",
-            ),
-        )
+        self.assertEqual(source, WebAppSource(release_url=SCREEN_RELEASE_URL))
 
     def test_retries_invalid_input_until_valid(self):
         class RetryUI(FakeUI):
             def __init__(self) -> None:
                 super().__init__()
-                self.values = iter(["demo-app", "Visivalab/demo-app"])
+                self.values = iter(["demo-app", DEMO_RELEASE_URL])
 
             def prompt(self, prompt: str) -> str:
                 self.prompts.append(prompt)
@@ -121,8 +89,9 @@ class AskWebAppKioskStepTests(unittest.TestCase):
 
         answer = WebAppKioskStep(prompt_for_next_action=False).ask(ui)
 
-        self.assertEqual(answer.source, WebAppSource(repo_ref="Visivalab/demo-app"))
-        self.assertTrue(any("owner/repo" in message for message in ui.messages))
+        self.assertEqual(answer.source, WebAppSource(release_url=DEMO_RELEASE_URL))
+        self.assertTrue(any("release zip URL" in message for message in ui.messages))
+        self.assertTrue(any("releases/latest/download" in message for message in ui.messages))
 
 
 class ApplyWebAppKioskStepTests(unittest.TestCase):
@@ -131,7 +100,7 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
         request = WebAppKioskStep().ask(
             FakeUI(
                 answers={
-                    "GitHub repo": "Visivalab/demo-app",
+                    RELEASE_URL_PROMPT: DEMO_RELEASE_URL,
                     NEXT_ACTION_PROMPT: "simulate",
                 }
             )
@@ -144,7 +113,7 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
                 host=host,
                 ui=FakeUI(
                     answers={
-                        "GitHub repo": "Visivalab/demo-app",
+                        RELEASE_URL_PROMPT: DEMO_RELEASE_URL,
                         NEXT_ACTION_PROMPT: "simulate",
                     }
                 ),
@@ -159,10 +128,10 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
         self.assertEqual(
             host.webapp_progress_messages,
             [
-                "Resolving GitHub repo",
-                "Downloading webapp archive",
+                "Preparing webapp release download",
+                "Downloading webapp release zip",
                 "Extracting webapp files",
-                "Deploying build output",
+                "Deploying webapp files",
             ],
         )
 
@@ -170,7 +139,7 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
         host = FakeHost()
         ui = FakeUI(
             answers={
-                "GitHub repo": "Visivalab/demo-app",
+                RELEASE_URL_PROMPT: DEMO_RELEASE_URL,
                 NEXT_ACTION_PROMPT: "simulate",
             }
         )
@@ -194,7 +163,7 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
         host = FakeHost()
         ui = FakeUI(
             answers={
-                "GitHub repo": "Visivalab/demo-app",
+                RELEASE_URL_PROMPT: DEMO_RELEASE_URL,
                 NEXT_ACTION_PROMPT: "reboot",
             }
         )
@@ -214,7 +183,7 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
         host = FakeHost()
         ui = FakeUI(
             answers={
-                "GitHub repo": "Visivalab/demo-app",
+                RELEASE_URL_PROMPT: DEMO_RELEASE_URL,
                 NEXT_ACTION_PROMPT: "close",
             }
         )
@@ -230,27 +199,26 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
         self.assertIn(log_tail_command(host.home()), report)
         self.assertIn(heartbeat_log_tail_command(host.home()), report)
 
-    def test_deploys_build_and_writes_one_autostart_block(self):
+    def test_deploys_release_zip_and_writes_one_autostart_block(self):
         host = FakeHost(
             deployed_webapp=WebAppDeployment(
-                repo_ref="Visivalab/demo-app",
+                source_url=DEMO_RELEASE_URL,
                 app_dir="/home/pi/.local/share/pi-kiosk/webapp/current",
-                artifact_dir="build",
             )
         )
         step = WebAppKioskStep()
-        ui = FakeUI(answers={"GitHub repo": "Visivalab/demo-app", NEXT_ACTION_PROMPT: "close"})
+        ui = FakeUI(answers={RELEASE_URL_PROMPT: DEMO_RELEASE_URL, NEXT_ACTION_PROMPT: "close"})
         step.ask(ui)
 
         report = step.apply(
             host,
-            WebAppSource(repo_ref="Visivalab/demo-app"),
+            WebAppSource(release_url=DEMO_RELEASE_URL),
             WizardContext(host=host, ui=ui),
         )
 
         self.assertEqual(
             host.webapp_deploy_requests,
-            [(WebAppSource(repo_ref="Visivalab/demo-app"), ("build", "dist"))],
+            [WebAppSource(release_url=DEMO_RELEASE_URL)],
         )
         self.assertEqual(host.installed_packages, [])
         autostart = host.files["/home/pi/.config/labwc/autostart"]
@@ -295,37 +263,36 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
         self.assertIn("chromium-browser", launcher)
         self.assertIn("http://127.0.0.1:8080", launcher)
         self.assertIn("/home/pi/.local/share/pi-kiosk/webapp/current", launcher)
-        self.assertIn("build", report.lower())
+        self.assertIn(DEMO_RELEASE_URL, report)
         self.assertIn("/home/pi/.local/share/pi-kiosk/webapp/current", report)
         self.assertIn(
-            "Used build/ and deployed it to /home/pi/.local/share/pi-kiosk/webapp/current.",
+            "Deployed it to /home/pi/.local/share/pi-kiosk/webapp/current.",
             report,
         )
         self.assertIn(heartbeat_log_tail_command(host.home()), report)
         self.assertEqual(
             host.webapp_progress_messages,
             [
-                "Resolving GitHub repo",
-                "Downloading webapp archive",
+                "Preparing webapp release download",
+                "Downloading webapp release zip",
                 "Extracting webapp files",
-                "Deploying build output",
+                "Deploying webapp files",
             ],
         )
 
-    def test_falls_back_to_dist_when_host_deploys_that_artifact(self):
+    def test_reports_the_release_zip_url_when_host_deploys_it(self):
         host = FakeHost(
             deployed_webapp=WebAppDeployment(
-                repo_ref="Visivalab/demo-app",
+                source_url=DEMO_RELEASE_URL,
                 app_dir="/home/pi/.local/share/pi-kiosk/webapp/current",
-                artifact_dir="dist",
             )
         )
 
         step = WebAppKioskStep()
-        step.ask(FakeUI(answers={"GitHub repo": "Visivalab/demo-app", NEXT_ACTION_PROMPT: "close"}))
-        report = step.apply(host, WebAppSource(repo_ref="Visivalab/demo-app"))
+        step.ask(FakeUI(answers={RELEASE_URL_PROMPT: DEMO_RELEASE_URL, NEXT_ACTION_PROMPT: "close"}))
+        report = step.apply(host, WebAppSource(release_url=DEMO_RELEASE_URL))
 
-        self.assertIn("dist", report.lower())
+        self.assertIn(DEMO_RELEASE_URL, report)
 
     def test_replaces_previous_kiosk_block_without_duplication(self):
         path = "/home/pi/.config/labwc/autostart"
@@ -343,7 +310,7 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
             }
         )
 
-        WebAppKioskStep().apply(host, WebAppSource(repo_ref="Visivalab/demo-app"))
+        WebAppKioskStep().apply(host, WebAppSource(release_url=DEMO_RELEASE_URL))
 
         autostart = host.files[path]
         self.assertEqual(autostart.count(KIOSK_AUTOSTART_BEGIN), 1)
@@ -365,7 +332,7 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
             }
         )
 
-        WebAppKioskStep().apply(host, WebAppSource(repo_ref="Visivalab/demo-app"))
+        WebAppKioskStep().apply(host, WebAppSource(release_url=DEMO_RELEASE_URL))
 
         rc_xml = host.files[path]
         self.assertEqual(rc_xml.count(CURSOR_RC_BEGIN), 1)
@@ -395,7 +362,7 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
             }
         )
 
-        WebAppKioskStep().apply(host, WebAppSource(repo_ref="Visivalab/demo-app"))
+        WebAppKioskStep().apply(host, WebAppSource(release_url=DEMO_RELEASE_URL))
 
         rc_xml = host.files[path]
         self.assertEqual(rc_xml.count(CURSOR_RC_BEGIN), 1)
@@ -408,12 +375,12 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
         host = FakeHost(chromium=None)
 
         with self.assertRaises(RuntimeError):
-            WebAppKioskStep().apply(host, WebAppSource(repo_ref="Visivalab/demo-app"))
+            WebAppKioskStep().apply(host, WebAppSource(release_url=DEMO_RELEASE_URL))
 
     def test_rejects_missing_wtype(self):
         host = FakeHost(wtype=None)
 
-        WebAppKioskStep().apply(host, WebAppSource(repo_ref="Visivalab/demo-app"))
+        WebAppKioskStep().apply(host, WebAppSource(release_url=DEMO_RELEASE_URL))
 
         self.assertEqual(host.installed_packages, [("wtype", "swayidle")])
         launcher = host.files[launcher_path(host.home())]
@@ -422,7 +389,7 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
     def test_rejects_missing_swayidle(self):
         host = FakeHost(swayidle=None)
 
-        WebAppKioskStep().apply(host, WebAppSource(repo_ref="Visivalab/demo-app"))
+        WebAppKioskStep().apply(host, WebAppSource(release_url=DEMO_RELEASE_URL))
 
         self.assertEqual(host.installed_packages, [("wtype", "swayidle")])
         launcher = host.files[launcher_path(host.home())]
@@ -443,45 +410,35 @@ class ApplyWebAppKioskStepTests(unittest.TestCase):
             }
         )
 
-        WebAppKioskStep().apply(host, WebAppSource(repo_ref="Visivalab/demo-app"))
+        WebAppKioskStep().apply(host, WebAppSource(release_url=DEMO_RELEASE_URL))
 
         rc_xml = host.files[path]
         self.assertIn("<labwc_config", rc_xml)
         self.assertNotIn("<openbox_config", rc_xml)
         self.assertIn('<keybind key="A-W-h">', rc_xml)
 
-    def test_passes_subdirectory_sources_to_host(self):
+    def test_passes_release_url_sources_to_host(self):
         host = FakeHost(
             deployed_webapp=WebAppDeployment(
-                repo_ref="Visivalab/etruscos_touch",
+                source_url=SCREEN_RELEASE_URL,
                 app_dir="/home/pi/.local/share/pi-kiosk/webapp/current",
-                artifact_dir="dist",
             )
         )
         context = WizardContext(host=host, ui=FakeUI())
 
         report = WebAppKioskStep().apply(
             host,
-            WebAppSource(
-                repo_ref="Visivalab/etruscos_touch",
-                subdir="screen_1_de",
-            ),
+            WebAppSource(release_url=SCREEN_RELEASE_URL),
             context,
         )
 
         self.assertEqual(
             host.webapp_deploy_requests,
             [
-                (
-                    WebAppSource(
-                        repo_ref="Visivalab/etruscos_touch",
-                        subdir="screen_1_de",
-                    ),
-                    ("build", "dist"),
-                )
+                WebAppSource(release_url=SCREEN_RELEASE_URL)
             ],
         )
         self.assertIn(
-            "Done: webapp kiosk deployed from Visivalab/etruscos_touch (subdirectory: screen_1_de/).",
+            f"Done: webapp kiosk deployed from {SCREEN_RELEASE_URL}.",
             report,
         )

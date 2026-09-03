@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 import shlex
 from dataclasses import replace
 from dataclasses import dataclass
@@ -33,10 +32,12 @@ SERVER_READY_RETRIES = 50
 SERVER_READY_DELAY_SECONDS = 0.2
 STARTUP_HEARTBEAT_RETRIES = 12
 STARTUP_HEARTBEAT_DELAY_SECONDS = 5
-_REPO_PROMPT = "GitHub repo"
-_REPO_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+RELEASE_URL_PROMPT = "Webapp release zip URL"
 _GITHUB_HOSTS = {"github.com", "www.github.com"}
 _HIDE_CURSOR_COMMAND = "-M alt -M logo -P h >/dev/null 2>&1 || true"
+_RELEASE_URL_EXAMPLE = (
+    "https://github.com/owner/repo/releases/latest/download/app-dist.zip"
+)
 
 
 @dataclass(frozen=True)
@@ -66,52 +67,43 @@ def heartbeat_log_tail_command(home: str) -> str:
 
 
 def _source_label(source: WebAppSource) -> str:
-    if not source.subdir:
-        return source.repo_ref
-    return f"{source.repo_ref} (subdirectory: {source.subdir}/)"
+    return source.release_url
 
 
 def normalize_source(value: str) -> WebAppSource:
     text = value.strip()
     if not text:
-        raise ValueError("Enter a GitHub repo in owner/repo format.")
+        raise ValueError(_release_url_error())
 
-    parts = _split_github_parts(text)
-    return _normalize_github_parts(parts)
+    if "://" not in text and text.lower().startswith(("github.com/", "www.github.com/")):
+        text = f"https://{text}"
 
-
-def _split_github_parts(value: str) -> list[str]:
-    parsed = urlsplit(value)
-    if parsed.scheme and parsed.scheme not in {"http", "https"}:
-        raise ValueError("Enter the repo as owner/repo or a GitHub URL.")
-
-    if parsed.scheme and parsed.netloc.lower() not in _GITHUB_HOSTS:
-        raise ValueError("Enter the repo as owner/repo or a GitHub URL.")
+    parsed = urlsplit(text)
+    if parsed.scheme != "https" or parsed.netloc.lower() not in _GITHUB_HOSTS:
+        raise ValueError(_release_url_error())
 
     parts = [part for part in parsed.path.strip("/").split("/") if part]
-    if parts and parts[0].lower() in _GITHUB_HOSTS:
-        return parts[1:]
-    return parts
+    if not _looks_like_release_download_path(parts):
+        raise ValueError(_release_url_error())
+
+    asset_name = parts[5]
+    if not asset_name.lower().endswith(".zip"):
+        raise ValueError(_release_url_error())
+
+    normalized_path = "/".join(parts)
+    return WebAppSource(release_url=f"https://github.com/{normalized_path}")
 
 
-def _normalize_github_parts(parts: list[str]) -> WebAppSource:
-    if len(parts) < 2:
-        raise ValueError("Enter a GitHub repo in owner/repo format.")
+def _looks_like_release_download_path(parts: list[str]) -> bool:
+    if len(parts) != 6:
+        return False
+    if parts[2:4] == ["releases", "download"]:
+        return True
+    return parts[2:5] == ["releases", "latest", "download"]
 
-    repo_ref = f"{parts[0]}/{parts[1].removesuffix('.git')}"
-    if not _REPO_PATTERN.fullmatch(repo_ref):
-        raise ValueError("Enter the repo as owner/repo or a GitHub URL.")
 
-    if len(parts) == 2:
-        return WebAppSource(repo_ref=repo_ref)
-
-    if len(parts) >= 4 and parts[2] == "tree":
-        subdir = "/".join(parts[4:]).strip("/")
-        if not subdir:
-            raise ValueError("GitHub tree URLs must include a subdirectory path.")
-        return WebAppSource(repo_ref=repo_ref, subdir=subdir)
-
-    raise ValueError("Enter the repo as owner/repo, owner/repo/tree/branch/path, or a GitHub URL.")
+def _release_url_error() -> str:
+    return f"Enter a public GitHub release zip URL, for example {_RELEASE_URL_EXAMPLE}."
 
 
 def launcher_path(home: str) -> str:
@@ -212,7 +204,7 @@ def launcher_script(browser: str, app_dir: str, wtype: str, swayidle: str) -> st
 
 class WebAppKioskStep:
     id = "webapp-kiosk"
-    title = _REPO_PROMPT
+    title = RELEASE_URL_PROMPT
     choices = ()
     interactive = True
 
@@ -247,7 +239,7 @@ class WebAppKioskStep:
             request = WebAppKioskRequest(source=request)
 
         progress = context.ui.progress if context is not None else None
-        deployment = host.deploy_webapp(request.source, ("build", "dist"), progress=progress)
+        deployment = host.deploy_webapp(request.source, progress=progress)
         browser = host.chromium_command()
         if browser is None:
             raise UserFacingError(
@@ -294,7 +286,7 @@ class WebAppKioskStep:
         )
         report = (
             f"Done: webapp kiosk deployed from {_source_label(request.source)}. "
-            f"Used {deployment.artifact_dir}/ and deployed it to {deployment.app_dir}. "
+            f"Deployed it to {deployment.app_dir}. "
             f"Chromium will start "
             f"on the next graphical login. The mouse cursor will hide after idle. "
             f"{log_report}"

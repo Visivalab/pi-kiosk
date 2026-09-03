@@ -48,14 +48,19 @@ class TerminalUITests(unittest.TestCase):
         self.assertIn("Done: example", stdout.getvalue())
 
     def test_prompt_reads_a_free_text_value(self):
-        stdin = io.StringIO("Visivalab/pi-kiosk-webapp\n")
+        stdin = io.StringIO(
+            "https://github.com/Visivalab/demo-app/releases/download/latest/demo-app-dist.zip\n"
+        )
         stdout = io.StringIO()
         ui = TerminalUI(stdin=stdin, stdout=stdout)
 
-        text = ui.prompt("GitHub repo")
+        text = ui.prompt("Webapp release zip URL")
 
-        self.assertEqual(text, "Visivalab/pi-kiosk-webapp")
-        self.assertIn("GitHub repo: ", stdout.getvalue())
+        self.assertEqual(
+            text,
+            "https://github.com/Visivalab/demo-app/releases/download/latest/demo-app-dist.zip",
+        )
+        self.assertIn("Webapp release zip URL: ", stdout.getvalue())
 
     def test_secret_reads_a_value(self):
         stdin = io.StringIO("secret-pass\n")
@@ -69,8 +74,8 @@ class TerminalUITests(unittest.TestCase):
 
     def test_progress_prints_a_loading_line(self):
         stdout = io.StringIO()
-        TerminalUI(stdin=io.StringIO(), stdout=stdout).progress("Downloading webapp archive")
-        self.assertIn("[....] Downloading webapp archive", stdout.getvalue())
+        TerminalUI(stdin=io.StringIO(), stdout=stdout).progress("Downloading webapp release zip")
+        self.assertIn("[....] Downloading webapp release zip", stdout.getvalue())
 
     def test_confirm_accepts_default_yes_on_empty_input(self):
         stdin = io.StringIO("\n")

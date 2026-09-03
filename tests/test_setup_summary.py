@@ -33,6 +33,13 @@ TOTEM_CONFIG = TotemRegistrationConfig(
     endpoint_url="https://dashboard.example.com/register-new-totem",
     token="totem-secret",
 )
+DEMO_RELEASE_URL = (
+    "https://github.com/Visivalab/demo-app/releases/download/latest/demo-app-dist.zip"
+)
+SCREEN_RELEASE_URL = (
+    "https://github.com/Visivalab/etruscos_touch/releases/download/"
+    "screen-1-de-latest/screen_1_de-dist.zip"
+)
 
 
 class RenderSetupSummaryTests(unittest.TestCase):
@@ -42,8 +49,7 @@ class RenderSetupSummaryTests(unittest.TestCase):
         context.record_answer(
             ProjectKioskStep.id,
             ProjectSelection(
-                project_type="webapp",
-                request=WebAppKioskRequest(source=WebAppSource(repo_ref="Visivalab/demo-app")),
+                project_type="webapp", request=WebAppKioskRequest(source=WebAppSource(release_url=DEMO_RELEASE_URL))
             ),
         )
         context.record_answer(RegisterTotemStep.id, None)
@@ -64,9 +70,8 @@ class RenderSetupSummaryTests(unittest.TestCase):
             asset_name="rustdesk-1.4.3-aarch64.deb",
         )
         context.state[WebAppKioskStep.id] = WebAppDeployment(
-            repo_ref="Visivalab/demo-app",
+            source_url=DEMO_RELEASE_URL,
             app_dir="/home/pi/.local/share/pi-kiosk/webapp/current",
-            artifact_dir="build",
             launcher_path="/home/pi/.config/pi-kiosk/webapp-kiosk.sh",
             server_url="http://127.0.0.1:8080",
             log_tail_command="tail -f /home/pi/.local/state/pi-kiosk/webapp-server.log",
@@ -89,7 +94,7 @@ class RenderSetupSummaryTests(unittest.TestCase):
             "- [x] RustDesk unattended access was installed and configured with ID 123 456 789",
             report,
         )
-        self.assertIn("- [x] Found build output in build/", report)
+        self.assertIn(f"- [x] Downloaded the webapp from {DEMO_RELEASE_URL}", report)
         self.assertIn(
             "- [x] Deployed the webapp to /home/pi/.local/share/pi-kiosk/webapp/current",
             report,
@@ -109,23 +114,17 @@ class RenderSetupSummaryTests(unittest.TestCase):
 
         self.assertNotIn("Totem registration was skipped", report)
 
-    def test_webapp_apply_writes_summary_state_with_subdirectory(self):
+    def test_webapp_apply_writes_summary_state_from_release_url(self):
         host = FakeHost(
             deployed_webapp=WebAppDeployment(
-                repo_ref="Visivalab/etruscos_touch",
-                artifact_dir="dist",
+                source_url=SCREEN_RELEASE_URL,
                 app_dir="/home/pi/.local/share/pi-kiosk/webapp/current",
             )
         )
         context = WizardContext(host=host, ui=FakeUI())
         selection = ProjectSelection(
             project_type="webapp",
-            request=WebAppKioskRequest(
-                source=WebAppSource(
-                    repo_ref="Visivalab/etruscos_touch",
-                    subdir="screen_1_de",
-                )
-            ),
+            request=WebAppKioskRequest(source=WebAppSource(release_url=SCREEN_RELEASE_URL)),
         )
         context.record_answer(ProjectKioskStep.id, selection)
         context.record_answer(RegisterTotemStep.id, None)
@@ -152,8 +151,7 @@ class RenderSetupSummaryTests(unittest.TestCase):
         self.assertEqual(
             context.state[WebAppKioskStep.id],
             WebAppDeployment(
-                repo_ref="Visivalab/etruscos_touch",
-                artifact_dir="dist",
+                source_url=SCREEN_RELEASE_URL,
                 app_dir="/home/pi/.local/share/pi-kiosk/webapp/current",
                 launcher_path="/home/pi/.config/pi-kiosk/webapp-kiosk.sh",
                 server_url="http://127.0.0.1:8080",
@@ -167,10 +165,9 @@ class RenderSetupSummaryTests(unittest.TestCase):
             ),
         )
         self.assertIn(
-            "- [x] Downloaded the webapp from Visivalab/etruscos_touch (subdirectory: screen_1_de/)",
+            f"- [x] Downloaded the webapp from {SCREEN_RELEASE_URL}",
             report,
         )
-        self.assertIn("- [x] Found build output in dist/", report)
 
     def test_renders_video_summary_with_totem_registration_details(self):
         host = FakeHost(machine_name="pi-kiosk-01")
